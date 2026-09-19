@@ -1,0 +1,33 @@
+[project]
+name = "decidr-backend"
+version = "0.1.0"
+description = "Safe, human-confirmed email microdecisions"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "pydantic-settings>=2.8,<3",
+  "sqlalchemy>=2.0,<3",
+  "apscheduler>=3.11,<4",
+  "openai>=2,<3",
+  "google-api-python-client>=2.160,<3",
+  "google-auth-oauthlib>=1.2,<2",
+  "pywebpush>=2,<3",
+  "beautifulsoup4>=4.13,<5",
+  "itsdangerous>=2.2,<3",
+  "cryptography>=44",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11", "pyyaml>=6"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

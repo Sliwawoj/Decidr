@@ -1,0 +1,48 @@
+name: Decidr checks
+on: [push, pull_request]
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Backend dependencies
+        run: python -m pip install -r backend/requirements.txt pytest httpx ruff pyyaml
+      - name: Backend tests
+        working-directory: backend
+        run: |
+          python -m pytest -q
+          ruff check app tests
+      - name: Frontend checks
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Start demo containers
+        run: docker compose up --build -d --wait
+      - name: Browser tests against Compose
+        working-directory: frontend
+        run: npm test
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure
+          path: |
+            frontend/test-results/
+            .local/
+      - name: Stop containers
+        if: always()
+        run: docker compose down
