@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import DomainError
 from app.db.models import Decision, utcnow
-from app.services.analyzer import fallback
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +27,11 @@ class IngestionService:
         )
         if existing:
             return existing, False
-        try:
-            analysis = fixture_analysis if is_demo else self.analyzer.analyze(message)
-            if analysis is None:
-                raise ValueError("Missing extraction")
-        except Exception:
-            analysis = fallback(message, "Błąd analizy AI")
+        analysis = fixture_analysis if is_demo else self.analyzer.analyze(message)
+        if analysis is None:
+            raise ValueError("Missing extraction")
 
-        queued = analysis.classification == "needs_reply"
+        queued = analysis.classification in {"needs_reply", "needs_review"}
         notes = list(dict.fromkeys([*analysis.warnings, *analysis.risk_flags]))
         values = analysis.model_dump(
             exclude={"classification", "sender_name", "is_binary", "warnings", "push_text"}

@@ -43,14 +43,14 @@ def test_idempotent_ingestion_and_failed_push(client):
         assert not created and two.id == one.id
 
 
-def test_llm_failure_still_creates_actionable_card(client):
+def test_llm_failure_raises_without_fallback(client):
     state = client.app.state
     state.ingestion.analyzer.analyze = Mock(side_effect=TimeoutError())
     message, _ = next(fixtures())
     message = message.model_copy(update={"gmail_message_id": "live-failure"})
     with state.sessions() as session:
-        row, created = state.ingestion.ingest(session, message)
-        assert created and row.status == "pending" and row.confidence == 0
+        with pytest.raises(TimeoutError):
+            state.ingestion.ingest(session, message)
 
 
 def test_high_stakes_and_skips_via_ingest(client, settings):

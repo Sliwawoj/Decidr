@@ -34,7 +34,7 @@ decision_type: purchase|invoice|schedule|routine|other
 conditions / missing_fields / risk_flags / warnings: short Polish lists; use [] when empty.
 Amounts are TOTAL gross. currency must be ISO 4217 only (PLN, EUR, USD) or null — never symbols like zł.
 deadline is ISO YYYY-MM-DD or null.
-classification must be needs_reply. is_binary true when yes/no fits.
+is_binary true when yes/no fits (needs_review); false when a written reply is needed (needs_reply).
 """
 
 DRAFT_PROMPT = """Write a short Polish email reply draft for the mailbox owner.
@@ -70,45 +70,12 @@ class ReplyDraft(BaseModel):
     draft: str
 
 
-def fallback(message: NormalizedMessage, reason: str) -> Analysis:
-    subject = (message.subject or "Prośba z wiadomości").strip()
-    return Analysis(
-        classification="needs_reply",
-        decision_type="other",
-        sender_name=message.sender_name,
-        summary=(message.body or subject)[:280],
-        request_text=subject,
-        push_text=(subject[:90] or "Nowa sprawa czeka na decyzję"),
-        amount=None,
-        currency=None,
-        deadline=None,
-        conditions=[],
-        missing_fields=[],
-        risk_flags=[],
-        warnings=[],
-        confidence=0,
-        is_binary=True,
-    )
-
-
-def skipped(message: NormalizedMessage, reason: str) -> Analysis:
-    return Analysis(
-        classification="skip",
-        decision_type="other",
-        sender_name=message.sender_name,
-        summary=reason,
-        request_text=message.subject or "",
-        push_text="",
-        amount=None,
-        currency=None,
-        deadline=None,
-        conditions=[],
-        missing_fields=[],
-        risk_flags=[],
-        warnings=[],
-        confidence=1,
-        is_binary=False,
-    )
+def classify_message(needs_decision: bool, is_binary: bool) -> str:
+    if not needs_decision:
+        return "skip"
+    if is_binary:
+        return "needs_review"
+    return "needs_reply"
 
 
 def _normalize_currency(raw: str | None) -> str | None:
@@ -128,13 +95,13 @@ def _normalize_currency(raw: str | None) -> str | None:
     return None
 
 
-def _to_analysis(extracted: ExtractedDecision, sender_name: str) -> Analysis:
+def _to_analysis(extracted: ExtractedDecision, sender_name: str, classification: str) -> Analysis:
     allowed = {"purchase", "invoice", "schedule", "routine", "other"}
     kind = extracted.decision_type if extracted.decision_type in allowed else "other"
     question = (extracted.request_text or extracted.push_text or "").strip()
     push = (extracted.push_text or question)[:120]
     return Analysis(
-        classification="needs_reply",
+        classification=classification,  # type: ignore[arg-type]
         decision_type=kind,  # type: ignore[arg-type]
         sender_name=sender_name,
         summary=(extracted.summary or "").strip() or question,
@@ -198,7 +165,7 @@ class LLMAnalyzer:
             raise ValueError("Missing gate result")
         return parsed
 
-    def extract(self, client, message: NormalizedMessage) -> Analysis:
+    def extract(self, client, message: NormalizedMessage) -> ExtractedDecision:
         response = self._generate(
             client,
             prompt=EXTRACT_PROMPT,
@@ -209,7 +176,7 @@ class LLMAnalyzer:
         parsed = self._parse(response, ExtractedDecision)
         if parsed is None:
             raise ValueError("Missing extraction result")
-        return _to_analysis(parsed, message.sender_name)
+        return parsed
 
     def suggest_draft(self, decision, choice: str) -> str:
         if not self.settings.gemini_api_key:
@@ -255,13 +222,35 @@ class LLMAnalyzer:
 
     def analyze(self, message: NormalizedMessage) -> Analysis:
         if not self.settings.gemini_api_key:
-            return fallback(message, "Analiza AI nie jest skonfigurowana")
+            raise RuntimeError("Gemini API key is not configured.")
         try:
             client = self._client()
             gate = self.gate(client, message)
             if not gate.needs_decision:
-                return skipped(message, gate.reason or "Wiadomość nie wymaga decyzji")
-            return self.extract(client, message)
+                return Analysis(
+                    classification="skip",
+                    decision_type="other",
+                    sender_name=message.sender_name,
+                    summary=gate.reason or "Wiadomość nie wymaga decyzji.",
+                    request_text=message.subject or "",
+                    push_text="",
+                    amount=None,
+                    currency=None,
+                    deadline=None,
+                    conditions=[],
+                    missing_fields=[],
+                    risk_flags=[],
+                    warnings=[],
+                    confidence=1.0,
+                    is_binary=False,
+                )
+            extracted = self.extract(client, message)
+            classification = classify_message(gate.needs_decision, extracted.is_binary)
+            return _to_analysis(
+                extracted.model_copy(update={"request_text": extracted.request_text or message.subject or ""}),
+                message.sender_name,
+                classification,
+            )
         except Exception as exc:
             logger.warning("Analysis failed: %s: %s", type(exc).__name__, str(exc)[:180])
-            return fallback(message, "Błąd analizy AI — sprawdź wiadomość ręcznie")
+            raise RuntimeError("Błąd analizy AI — sprawdź wiadomość ręcznie") from exc
