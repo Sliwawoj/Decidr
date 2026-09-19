@@ -5,8 +5,6 @@ from sqlalchemy import delete
 from app.db.models import Decision, utcnow
 from app.schemas.decision import Analysis, NormalizedMessage
 
-DEMO_SENDERS = {"anna.kowalska@studio.example", "piotr.nowak@studio.example", "ola@studio.example"}
-
 
 def fixtures():
     now = utcnow()
@@ -22,13 +20,14 @@ def fixtures():
             "Czy mogę zamówić ten zestaw? Dzięki, Anna",
             "Zestaw markerów i karteczek na warsztat z klientem.",
             "Czy zatwierdzasz zakup materiałów za 249 PLN?",
+            "Zatwierdzić zakup materiałów za 249 PLN?",
             249,
             "PLN",
             tomorrow,
             ["Łączna cena brutto z dostawą", "W ramach budżetu biura"],
             [],
             [],
-            "microdecision",
+            [],
         ),
         (
             "schedule",
@@ -39,13 +38,14 @@ def fixtures():
             "w godzinach 10:00–12:00? Przesyłka jest opłacona, bez dodatkowych kosztów. Piotr",
             "Potwierdzenie odbioru gotowych materiałów przez kuriera.",
             f"Czy potwierdzasz odbiór {tomorrow}, 10:00–12:00?",
+            f"Potwierdzić odbiór kuriera {tomorrow}?",
             None,
             None,
             tomorrow,
             ["Odbiór w godzinach 10:00–12:00", "Bez dodatkowych kosztów"],
             [],
             [],
-            "microdecision",
+            [],
         ),
         (
             "other",
@@ -56,13 +56,14 @@ def fixtures():
             "Umowa obejmuje wyłączność na 3 lata i kary umowne. Czy możemy rozpocząć współpracę?",
             "Umowa inwestycyjna z wyłącznością i wysoką kwotą.",
             "Akceptacja umowy na 85000 PLN.",
+            "Zaakceptować umowę inwestycyjną na 85 000 PLN?",
             85000,
             "PLN",
             None,
             ["Wyłączność na 3 lata", "Kary umowne"],
             [],
             ["Zobowiązanie prawne"],
-            "review_required",
+            ["Wysoka kwota", "Temat prawny / inwestycyjny"],
         ),
         (
             "purchase",
@@ -73,13 +74,14 @@ def fixtures():
             "Nie wybrałam jeszcze modelu ani dostawcy. Daj znać! Ola",
             "Prośba o monitor bez określonej ceny i modelu.",
             "Czy można kupić monitor?",
+            "Zatwierdzić zakup monitora bez wybranej oferty?",
             None,
             None,
             None,
             [],
             ["Kwota", "Model i dostawca"],
             [],
-            "review_required",
+            ["Brakuje szczegółów zakupu"],
         ),
     ]
     for index, row in enumerate(rows):
@@ -91,13 +93,14 @@ def fixtures():
             body,
             summary,
             request,
+            push_text,
             amount,
             currency,
             deadline,
             conditions,
             missing,
             risks,
-            classification,
+            warnings,
         ) = row
         message = NormalizedMessage(
             gmail_message_id=f"demo-{index + 1}",
@@ -110,19 +113,21 @@ def fixtures():
             body=body,
         )
         analysis = Analysis(
-            classification=classification,
+            classification="needs_reply",
             decision_type=kind,
             sender_name=name,
             summary=summary,
             request_text=request,
+            push_text=push_text,
             amount=amount,
             currency=currency,
             deadline=deadline,
             conditions=conditions,
             missing_fields=missing,
             risk_flags=risks,
-            confidence=0.98 if classification == "microdecision" else 0.65,
-            is_binary=classification == "microdecision",
+            warnings=warnings,
+            confidence=0.92,
+            is_binary=True,
         )
         yield message, analysis
 
@@ -130,8 +135,8 @@ def fixtures():
 def load_demo(session, ingestion):
     created = 0
     for message, analysis in fixtures():
-        _, is_new = ingestion.ingest(session, message, is_demo=True, fixture_analysis=analysis)
-        created += int(is_new)
+        _, queued = ingestion.ingest(session, message, is_demo=True, fixture_analysis=analysis)
+        created += int(queued)
     return created
 
 

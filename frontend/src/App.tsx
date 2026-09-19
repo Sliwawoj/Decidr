@@ -67,15 +67,8 @@ export default function App() {
   const pending = decisions.filter((d) =>
     ["pending", "draft_ready"].includes(d.status),
   ).length;
-  const review = decisions.filter((d) => d.status === "review_required").length;
   const nav = [
     { path: "/", label: "Kolejka decyzji", icon: Inbox, count: pending },
-    {
-      path: "/review",
-      label: "Pełny kontekst",
-      icon: ShieldCheck,
-      count: review,
-    },
     { path: "/history", label: "Historia", icon: History, count: 0 },
     { path: "/integrations", label: "Integracje", icon: Plug2, count: 0 },
   ];
@@ -242,17 +235,6 @@ export default function App() {
                       status={status}
                       refresh={refresh}
                       view="queue"
-                    />
-                  }
-                />
-                <Route
-                  path="/review"
-                  element={
-                    <QueuePage
-                      decisions={decisions}
-                      status={status}
-                      refresh={refresh}
-                      view="review"
                     />
                   }
                 />

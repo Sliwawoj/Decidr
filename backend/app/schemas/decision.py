@@ -6,21 +6,21 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 
 class Analysis(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    classification: Literal["microdecision", "review_required"]
+    classification: Literal["needs_reply", "skip"]
     decision_type: Literal["purchase", "invoice", "schedule", "routine", "other"]
     sender_name: str
     summary: str
     request_text: str
-    amount: float | None
-    currency: str | None
-    deadline: str | None
-    conditions: list[str]
-    missing_fields: list[str]
-    risk_flags: list[str]
-    confidence: float = Field(ge=0, le=1)
-    is_binary: bool
+    push_text: str = ""
+    amount: float | None = None
+    currency: str | None = None
+    deadline: str | None = None
+    conditions: list[str] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.8, ge=0, le=1)
+    is_binary: bool = True
 
     @field_validator("amount")
     @classmethod

@@ -17,7 +17,7 @@ export const typeNames: Record<string, string> = {
   invoice: "Faktura",
   schedule: "Termin",
   routine: "Rutynowa prośba",
-  other: "Pełny kontekst",
+  other: "Inna sprawa",
 };
 export const money = (amount: number, currency = "PLN") =>
   new Intl.NumberFormat("pl-PL", {
@@ -106,12 +106,10 @@ export function StatusBadge({ decision: d }: { decision: Decision }) {
         Wysłano
       </Badge>
     );
-  if (d.classification === "review_required")
-    return <Badge className="badge-warning">Pełny kontekst</Badge>;
   return (
     <Badge className="badge-success">
       <ShieldCheck size={12} />
-      Prosta decyzja
+      Szybka odpowiedź
     </Badge>
   );
 }

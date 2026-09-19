@@ -2,7 +2,7 @@
 
 Spokojne miejsce na proste decyzje operacyjne z maila. MVP na hackathon: **React + Vite + TypeScript + Tailwind + shadcn/ui**, **FastAPI + Pydantic + SQLAlchemy + SQLite**.
 
-Decidr przygotowuje kartę i odpowiedź. Użytkownik podejmuje decyzję, edytuje draft i **osobno potwierdza** ostatni krok. Tematy ryzykowne trafiają do sekcji „Pełny kontekst”.
+Decidr przygotowuje kartę i odpowiedź. Użytkownik podejmuje decyzję, edytuje draft i **osobno potwierdza** ostatni krok. Ważne sprawy dostają ostrzeżenie, ale zostają w jednej kolejce szybkiej odpowiedzi.
 
 ## Demo — jedno polecenie
 
@@ -26,14 +26,14 @@ Otwórz **http://localhost:5173**. Pierwszy start automatycznie tworzy cztery pr
 
 ## Scenariusz prezentacji (2–3 minuty)
 
-1. Pokaż kolejkę: dwie proste decyzje i dwie sprawy wymagające kontekstu. Widoczny bursztynowy pasek oznacza demo.
+1. Pokaż kolejkę: cztery przykładowe sprawy do działania. Widoczny bursztynowy pasek oznacza demo.
 2. Otwórz **Materiały do warsztatu z klientem**: znana nadawczyni, 249 PLN, termin i warunki.
 3. Kliknij **Zezwól**. Powstaje draft; nic nie jest wysyłane.
 4. Edytuj odpowiedź. Kliknij **Przejdź do potwierdzenia** — edycja zostanie zapisana.
 5. Sprawdź odbiorcę, temat i treść. Możesz wrócić do edycji.
 6. Kliknij **Potwierdzam symulację**. Komunikat: „Symulacja zakończona. Nic nie wysłaliśmy.” Sprawa jest w historii.
-7. Otwórz ryzykowną umowę za 85 000 PLN. Nie ma przycisków Zezwól/Odrzuć; widać przyczyny blokady.
-8. W drugiej bezpiecznej sprawie możesz pokazać ścieżkę **Odrzuć**. Integracje pozwalają zresetować demo.
+7. Otwórz umowę za 85 000 PLN — też jest w kolejce do działania; Ty decydujesz.
+8. W drugiej sprawie możesz pokazać ścieżkę **Odrzuć**. Integracje pozwalają zresetować demo.
 
 ## Uruchamianie bez Dockera
 
@@ -74,10 +74,9 @@ To konfiguracja aplikacji, nie wtyczka Gmail do Codex. Nie wpisuj sekretów do k
 4. W Google Cloud włącz Gmail API. Skonfiguruj ekran zgody OAuth i użytkownika testowego. Utwórz klienta **Web application**.
 5. Dodaj dokładny redirect URI: `http://localhost:5173/api/oauth/gmail/callback`.
 6. Uzupełnij `GOOGLE_CLIENT_ID` i `GOOGLE_CLIENT_SECRET`.
-7. Ustaw `KNOWN_SENDERS` na rozdzielone przecinkami dokładne adresy znanych nadawców. Domyślnie lista jest pusta, więc wszystkie prawdziwe wiadomości wymagają pełnego kontekstu.
-8. Dodaj `GEMINI_API_KEY` z [Google AI Studio](https://aistudio.google.com/apikey). Opcjonalnie zmień `GEMINI_MODEL` na dostępny na Twoim koncie model obsługujący structured JSON; domyślnie `gemini-2.5-flash`.
-9. Uruchom ponownie backend/Compose. Zaloguj się hasłem aplikacji i w **Integracje** wybierz **Połącz konto Gmail**.
-10. Użyj **Synchronizuj Gmail**. APScheduler wykonuje synchronizację również co 120 sekund.
+7. Uzupełnij `GEMINI_API_KEY` (i opcjonalnie `GEMINI_MODEL`).
+8. Uruchom ponownie backend/Compose. Zaloguj się hasłem aplikacji i w **Integracje** wybierz **Połącz konto Gmail**.
+9. Użyj **Synchronizuj Gmail**. APScheduler wykonuje synchronizację również co 120 sekund.
 
 Zakresy OAuth: `gmail.readonly` i `gmail.send`. Nie żądamy `gmail.modify`: aplikacja nie zmienia flag przeczytania ani etykiet wiadomości. Zapis unikalnego Gmail message ID w bazie po analizie jest punktem oznaczenia sprawy jako przetworzonej.
 
@@ -85,7 +84,7 @@ Synchronizacja pobiera MIME `format=raw`, preferuje `text/plain`, dekoduje znaki
 
 Odpowiedź używa `threadId`, `In-Reply-To`, `References` i zgodnego tematu. Stan OAuth ma 10-minutową ważność, jest jednorazowy i używa PKCE. Tokeny są przechowywane zaszyfrowane; jedna baza obsługuje jedną skrzynkę. Nie zmieniaj klucza szyfrowania bez ponownej autoryzacji konta.
 
-W trybie live wiadomości z wybranego zakresu skrzynki są przekazywane do API Gemini w celu analizy. Prompt traktuje treść maila jako niezaufane dane, a odpowiedź jest parsowana do modelu Pydantic. Odmowa, niekompletny wynik, brak klucza lub wyjątek → `review_required`.
+W trybie live każdy nowy mail idzie najpierw do Gemini (czy potrzebna decyzja). Odrzucone wiadomości są pomijane (`skipped`). Przy `needs_decision` drugie wywołanie buduje kartę i krótki `push_text` do powiadomienia.
 
 Jeśli wystawiasz aplikację poza localhost, skonfiguruj HTTPS, poprawny `FRONTEND_URL`, redirect URI i `COOKIE_SECURE=true`. Do demonstracji używaj dedykowanej skrzynki testowej.
 
@@ -104,11 +103,11 @@ Modularny monolit, jedna baza, jeden proces backendu. Bez Celery, Redisa i mikro
 
 | Plik | Odpowiedzialność |
 | --- | --- |
-| `backend/app/services/safety.py` | Reguły po analizie LLM; wyłącznie obniżanie klasyfikacji |
-| `backend/app/services/ingestion.py` | Analiza → Safety Policy → unikalny zapis → push; blokada równoległych synchronizacji |
+| `backend/app/services/analyzer.py` | Dwuetapowe Gemini: gate + extract/`push_text` |
+| `backend/app/services/ingestion.py` | Analiza → zapis → push |
 | `backend/app/services/drafts.py` | Wybór, edycja, kontrola wersji, potwierdzenie, symulacja i atomowe rozpoczęcie wysyłki |
 | `backend/app/services/gmail.py` | OAuth, szyfrowane tokeny, MIME, pobieranie i odpowiedź w wątku |
-| `backend/app/services/analyzer.py` | Gemini structured JSON i bezpieczny fallback |
+| `backend/app/services/analyzer.py` | Dwuetapowe Gemini: gate + extract/`push_text` |
 | `backend/app/services/push.py` | Subskrypcje, VAPID i niezależna od kolejki obsługa błędów |
 | `backend/app/db/models.py` | Decyzje, subskrypcje i połączenie Gmail |
 | `backend/app/api/routes.py` | Cienkie endpointy i sesja |
@@ -118,13 +117,13 @@ Modularny monolit, jedna baza, jeden proces backendu. Bez Celery, Redisa i mikro
 | `frontend/public/sw.js` | Powiadomienia bez cache wiadomości |
 | `backend/tests/`, `frontend/tests/demo.spec.ts` | Reguły, API, integracje z podstawionymi usługami i demo w przeglądarce |
 
-Przejścia: `analyzed → pending → draft_ready → sent`; `analyzed → review_required`; w demo `draft_ready → demo_completed`. Stan analizowany nie jest publikowany przed zakończeniem Safety Policy. Nie ma endpointu pozwalającego zmienić `review_required` w binarną decyzję.
+Przejścia: `analyzed → pending → draft_ready → sent`; pominięte maile: `skipped` (ukryte w API); w demo `draft_ready → demo_completed`. Stan analizowany nie jest publikowany przed zakończeniem filtra.
 
-Reguły blokują m.in. nieznanych nadawców, brak danych, niską pewność, kwoty ponad limit, waluty poza konfiguracją, tematy prawne/personalne/strategiczne, załączniki, niejednoznaczne pytania i terminy. Kwoty oraz wrażliwe słowa są sprawdzane również w oryginalnym tekście, niezależnie od wyniku modelu. Nietypowy zapis kwoty wymaga ręcznej weryfikacji.
+Filtr MVP: pierwsze wywołanie Gemini decyduje o skip/queue. Drugie buduje kartę i krótki tekst powiadomienia. Ostrzeżenia pochodzą z modelu (`warnings` / `risk_flags`). Finalną treść zatwierdza człowiek.
 
 Każda mutacja wymaga nagłówka `X-Decidr-Client: web`, a przy obecnym Origin jest sprawdzane jego dopasowanie. Tryb live dodatkowo wymaga sesji z ciasteczkiem HttpOnly/SameSite. Hasło ma prosty limit nieudanych prób. Endpoint `/send` wymaga prawdziwego JSON boolean `confirmed: true` i aktualnej `version`, więc zmiana draftu w innej karcie unieważnia stary podgląd.
 
-Przed połączeniem z Gmail zapisywany jest atomowy `send_attempted_at`. Timeout może oznaczać, że Gmail przyjął wiadomość. Nie wykonujemy automatycznej ponownej wysyłki; interfejs wskazuje konieczność sprawdzenia wątku. Zapobiega to duplikatom kosztem ręcznej obsługi niepewnych rezultatów. Przed wysyłką ponownie sprawdzane są termin, bieżący limit kwoty/waluty i lista znanych nadawców.
+Przed połączeniem z Gmail zapisywany jest atomowy `send_attempted_at`. Timeout może oznaczać, że Gmail przyjął wiadomość. Nie wykonujemy automatycznej ponownej wysyłki; interfejs wskazuje konieczność sprawdzenia wątku. Zapobiega to duplikatom kosztem ręcznej obsługi niepewnych rezultatów.
 
 ## API
 

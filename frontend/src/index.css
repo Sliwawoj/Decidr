@@ -1005,6 +1005,13 @@ svg {
   color: #9f7b3c;
   border-color: #ebdcb9;
 }
+.warning-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.warning-list li {
+  margin: 2px 0;
+}
 .empty-state {
   padding: 48px 24px;
   text-align: center;

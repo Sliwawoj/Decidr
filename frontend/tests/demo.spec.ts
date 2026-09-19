@@ -17,6 +17,9 @@ test("approve, edit, preview, cancel, confirm and persist demo", async ({
     page.getByRole("heading", { name: "Twoje decyzje", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Tryb demo", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Pełny kontekst" })).toHaveCount(
+    0,
+  );
   await page.screenshot({
     path: "../.local/queue-" + testInfo.project.name + ".png",
     fullPage: true,
@@ -58,7 +61,7 @@ test("approve, edit, preview, cancel, confirm and persist demo", async ({
   expect(errors).toEqual([]);
 });
 
-test("risky matter is blocked, reject creates a draft and history starts empty", async ({
+test("high-stakes matter stays actionable with warning, reject creates a draft", async ({
   page,
 }) => {
   await page.goto("/history");
@@ -67,15 +70,9 @@ test("risky matter is blocked, reject creates a draft and history starts empty",
   await page
     .getByRole("link", { name: /Pilne: akceptacja umowy partnerskiej/ })
     .click();
-  await expect(
-    page.getByRole("heading", { name: /Ta sprawa potrzebuje/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Nieznany nadawca", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Zezwól", exact: true }),
-  ).toHaveCount(0);
+  await expect(page.getByText("Warto spojrzeć uważniej")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Zezwól", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Odrzuć", exact: true })).toBeVisible();
   await page.getByText("Oryginalna wiadomość", { exact: true }).click();
   await expect(
     page.getByText(/Proszę dziś zaakceptować umowę inwestycyjną/),

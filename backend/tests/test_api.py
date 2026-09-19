@@ -43,22 +43,52 @@ def test_idempotent_ingestion_and_failed_push(client):
         assert not created and two.id == one.id
 
 
-def test_llm_failure_is_saved_for_review(client):
+def test_llm_failure_still_creates_actionable_card(client):
     state = client.app.state
     state.ingestion.analyzer.analyze = Mock(side_effect=TimeoutError())
     message, _ = next(fixtures())
     message = message.model_copy(update={"gmail_message_id": "live-failure"})
     with state.sessions() as session:
         row, created = state.ingestion.ingest(session, message)
-        assert created and row.status == "review_required" and row.confidence == 0
+        assert created and row.status == "pending" and row.confidence == 0
 
 
-def test_review_cannot_choose_edit_or_send(client):
-    row = next(row for row in client.get("/api/decisions").json() if row["status"] == "review_required")
-    url = f"/api/decisions/{row['id']}"
-    assert client.post(url + "/choice", json={"choice": "approve", "version": 1}).status_code == 409
-    assert client.patch(url + "/draft", json={"draft": "yes", "version": 1}).status_code == 409
-    assert client.post(url + "/send", json={"confirmed": True, "version": 1}).status_code == 409
+def test_high_stakes_and_skips_via_ingest(client, settings):
+    state = client.app.state
+    legal = list(fixtures())[2]
+    message, analysis = legal
+    message = message.model_copy(update={"gmail_message_id": "legal-live"})
+    with state.sessions() as session:
+        row, queued = state.ingestion.ingest(session, message, True, analysis)
+        assert queued and row.status == "pending" and row.classification == "needs_reply"
+        assert row.safety_reasons  # warnings from fixture / model
+    skip_mail = message.model_copy(
+        update={
+            "gmail_message_id": "skip-newsletter",
+            "subject": "Newsletter",
+            "body": "Flash sale. Unsubscribe.",
+            "sender_email": "promo@shop.example",
+        }
+    )
+    with state.sessions() as session:
+        row, queued = state.ingestion.ingest(
+            session, skip_mail, True, analysis.model_copy(update={"classification": "skip", "push_text": ""})
+        )
+        assert not queued and row.status == "skipped"
+    assert all(row["gmail_message_id"] != "skip-newsletter" for row in client.get("/api/decisions").json())
+
+
+def test_push_uses_short_decision_blurb(client, settings):
+    state = client.app.state
+    message, analysis = next(fixtures())
+    message = message.model_copy(update={"gmail_message_id": "push-blurb"})
+    state.push.notify = Mock()
+    with state.sessions() as session:
+        row, queued = state.ingestion.ingest(session, message, True, analysis)
+        assert queued
+    state.push.notify.assert_called_once()
+    assert state.push.notify.call_args.args[0] == row.id
+    assert "249" in state.push.notify.call_args.args[1]
 
 
 @pytest.mark.parametrize("choice,word", [("approve", "Wyrażam zgodę"), ("reject", "Nie wyrażam zgody")])
@@ -208,7 +238,7 @@ def test_live_send_success_and_uncertain_failure(client, settings):
             session.commit()
             gmail = Mock()
             gmail.send_reply = Mock(side_effect=TimeoutError()) if fail else Mock(return_value="reply-id")
-            live = settings.model_copy(update={"app_mode": "live", "known_senders": row.sender_email})
+            live = settings.model_copy(update={"app_mode": "live"})
             if fail:
                 from app.core.errors import DomainError
 

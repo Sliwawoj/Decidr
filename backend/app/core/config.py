@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,12 +20,7 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:5173/api/oauth/gmail/callback"
-    known_senders: str = ""
-    max_amount: float = Field(default=1000, gt=0)
-    allowed_currency: str = "PLN"
-    min_confidence: float = Field(default=0.9, ge=0, le=1)
-    sync_interval_seconds: int = Field(default=120, ge=30)
-    # Base Gmail search. Sync always adds after: from connected_at and skips older messages.
+    sync_interval_seconds: int = 120
     gmail_query: str = "in:inbox -from:me"
     vapid_public_key: str = ""
     vapid_private_key: str = ""
@@ -44,10 +39,6 @@ class Settings(BaseSettings):
 
             Fernet(self.token_encryption_key.encode())
         return self
-
-    @property
-    def senders(self) -> set[str]:
-        return {s.strip().lower() for s in self.known_senders.split(",") if s.strip()}
 
     @property
     def gmail_configured(self) -> bool:

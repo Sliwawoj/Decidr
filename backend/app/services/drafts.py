@@ -9,7 +9,11 @@ from app.db.models import Decision, utcnow
 
 def get_decision(session, decision_id, settings):
     decision = session.scalar(
-        select(Decision).where(Decision.id == decision_id, Decision.is_demo.is_(settings.app_mode == "demo"))
+        select(Decision).where(
+            Decision.id == decision_id,
+            Decision.is_demo.is_(settings.app_mode == "demo"),
+            Decision.status != "skipped",
+        )
     )
     if decision is None:
         raise DomainError("Nie znaleziono sprawy.", 404)
@@ -17,7 +21,7 @@ def get_decision(session, decision_id, settings):
 
 
 def writable(decision, status, version):
-    if decision.classification != "microdecision" or decision.status != status:
+    if decision.classification != "needs_reply" or decision.status != status:
         raise DomainError("Ta sprawa nie pozwala na taką zmianę stanu.")
     if decision.version != version:
         raise DomainError("Sprawa zmieniła się w innej karcie. Odśwież widok.")
@@ -39,18 +43,17 @@ def update_versioned(session, decision, version, **values):
     return decision
 
 
-def choose(session, decision, choice, version):
+def choose(session, decision, choice, version, analyzer=None):
     writable(decision, "pending", version)
-    answer = (
-        "Wyrażam zgodę na poniższą prośbę."
-        if choice == "approve"
-        else "Nie wyrażam zgody na poniższą prośbę."
-    )
-    # Deterministic drafting: no new facts or promises invented by a second model call.
-    draft = f"Dzień dobry,\n\n{answer}\n\n{decision.request_text}"
-    if decision.conditions:
-        draft += "\n\nWarunki opisane w prośbie:\n" + "\n".join(f"• {c}" for c in decision.conditions)
-    draft += "\n\nPozdrawiam"
+    if analyzer is not None:
+        draft = analyzer.suggest_draft(decision, choice)
+    else:
+        answer = (
+            "Wyrażam zgodę na poniższą prośbę."
+            if choice == "approve"
+            else "Nie wyrażam zgody na poniższą prośbę."
+        )
+        draft = f"Dzień dobry,\n\n{answer}\n\n{decision.request_text}\n\nPozdrawiam"
     return update_versioned(session, decision, version, user_choice=choice, draft=draft, status="draft_ready")
 
 
@@ -65,17 +68,10 @@ def send(session, decision, confirmed, version, settings, gmail):
     writable(decision, "draft_ready", version)
     if not decision.draft or not decision.draft.strip():
         raise DomainError("Draft nie może być pusty.")
-    if (
-        decision.deadline
-        and date.fromisoformat(decision.deadline) < datetime.now(ZoneInfo("Europe/Warsaw")).date()
-    ):
+    if decision.deadline and date.fromisoformat(decision.deadline) < datetime.now(
+        ZoneInfo("Europe/Warsaw")
+    ).date():
         raise DomainError("Termin już minął. Sprawdź oryginalną wiadomość zamiast wysyłać odpowiedź.")
-    if decision.amount is not None and (
-        decision.amount > settings.max_amount or decision.currency != settings.allowed_currency
-    ):
-        raise DomainError("Sprawa przekracza aktualny limit kwoty lub waluty.")
-    if not decision.is_demo and decision.sender_email.lower() not in settings.senders:
-        raise DomainError("Nadawca nie znajduje się już na liście znanych nadawców.")
     if decision.is_demo:
         # Deliberately before any Gmail access. sent_at remains NULL.
         return update_versioned(session, decision, version, status="demo_completed")

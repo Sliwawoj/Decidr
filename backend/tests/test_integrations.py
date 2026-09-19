@@ -15,27 +15,74 @@ from app.services.demo import fixtures
 from app.services.gmail import GmailService
 
 
-def test_structured_output_and_refusal_fallback(settings):
+def test_two_step_llm_gate_and_extract(settings):
+    from app.services.analyzer import DecisionGate, ExtractedDecision
+
     message, analysis = next(fixtures())
+    analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
+    extracted = ExtractedDecision(
+        decision_type=analysis.decision_type,
+        summary=analysis.summary,
+        request_text=analysis.request_text,
+        push_text=analysis.push_text,
+        amount=analysis.amount,
+        currency=analysis.currency,
+        deadline=analysis.deadline,
+        conditions=analysis.conditions,
+        missing_fields=analysis.missing_fields,
+        risk_flags=analysis.risk_flags,
+        warnings=analysis.warnings,
+        confidence=analysis.confidence,
+        is_binary=analysis.is_binary,
+    )
+    with patch("app.services.analyzer.genai.Client") as sdk:
+        client = sdk.return_value
+        client.models.generate_content.side_effect = [
+            SimpleNamespace(parsed=DecisionGate(needs_decision=True, reason="Jest pytanie o zgodę")),
+            SimpleNamespace(parsed=extracted),
+        ]
+        result = analyzer.analyze(message)
+        assert result.classification == "needs_reply"
+        assert result.push_text == analysis.push_text
+        assert result.request_text == analysis.request_text
+        assert result.summary == analysis.summary
+        assert client.models.generate_content.call_count == 2
+        gate_args, extract_args = client.models.generate_content.call_args_list
+        assert gate_args.kwargs["config"].response_schema.__name__ == "DecisionGate"
+        assert extract_args.kwargs["config"].response_schema.__name__ == "ExtractedDecision"
+
+
+def test_gate_skip_skips_second_llm_call(settings):
+    from app.services.analyzer import DecisionGate
+
+    message, _ = next(fixtures())
     analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
     with patch("app.services.analyzer.genai.Client") as sdk:
         client = sdk.return_value
-        client.models.generate_content.return_value = SimpleNamespace(parsed=analysis)
-        assert analyzer.analyze(message) == analysis
-        args = client.models.generate_content.call_args.kwargs
-        assert args["model"] == settings.gemini_model
-        assert args["config"].response_schema.__name__ == "Analysis"
-        assert "UNTRUSTED DATA" in args["config"].system_instruction
-        client.models.generate_content.return_value = SimpleNamespace(parsed=None)
-        assert analyzer.analyze(message).classification == "review_required"
-        client.models.generate_content.side_effect = TimeoutError()
-        assert analyzer.analyze(message).confidence == 0
+        client.models.generate_content.return_value = SimpleNamespace(
+            parsed=DecisionGate(needs_decision=False, reason="Newsletter")
+        )
+        result = analyzer.analyze(message)
+        assert result.classification == "skip"
+        assert client.models.generate_content.call_count == 1
+
+
+def test_llm_failure_falls_back_to_queue(settings):
+    message, _ = next(fixtures())
+    analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
+    with patch("app.services.analyzer.genai.Client") as sdk:
+        sdk.return_value.models.generate_content.side_effect = TimeoutError()
+        result = analyzer.analyze(message)
+        assert result.classification == "needs_reply"
+        assert result.confidence == 0
+        assert result.push_text
 
 
 def test_missing_llm_key_never_uses_demo_analysis(settings):
     message, _ = next(fixtures())
     with patch("app.services.analyzer.genai.Client") as sdk:
-        assert LLMAnalyzer(settings).analyze(message).classification == "review_required"
+        result = LLMAnalyzer(settings).analyze(message)
+        assert result.classification == "needs_reply"
         sdk.assert_not_called()
 
 

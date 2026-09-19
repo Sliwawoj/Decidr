@@ -93,11 +93,6 @@ def status(request: Request, session=Depends(session_db)):
             "configured": settings.push_configured,
             "public_key": settings.vapid_public_key if settings.push_configured else None,
         },
-        "policy": {
-            "max_amount": settings.max_amount,
-            "currency": settings.allowed_currency,
-            "min_confidence": settings.min_confidence,
-        },
         "last_sync_at": state.ingestion.last_sync_at if authenticated else None,
         "last_sync_error": state.ingestion.last_sync_error if authenticated else None,
     }
@@ -107,7 +102,10 @@ def status(request: Request, session=Depends(session_db)):
 def list_decisions(request: Request, session=Depends(session_db)):
     return session.scalars(
         select(Decision)
-        .where(Decision.is_demo.is_(request.app.state.settings.app_mode == "demo"))
+        .where(
+            Decision.is_demo.is_(request.app.state.settings.app_mode == "demo"),
+            Decision.status != "skipped",
+        )
         .order_by(Decision.received_at.desc())
     ).all()
 
@@ -139,7 +137,9 @@ def sync_gmail(request: Request):
 )
 def choose(decision_id: str, data: ChoiceIn, request: Request, session=Depends(session_db)):
     decision = drafts.get_decision(session, decision_id, request.app.state.settings)
-    return drafts.choose(session, decision, data.choice, data.version)
+    return drafts.choose(
+        session, decision, data.choice, data.version, analyzer=request.app.state.ingestion.analyzer
+    )
 
 
 @router.patch(

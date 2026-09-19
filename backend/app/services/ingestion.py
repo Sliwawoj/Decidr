@@ -6,9 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import DomainError
 from app.db.models import Decision, utcnow
-from app.services import safety
 from app.services.analyzer import fallback
-from app.services.demo import DEMO_SENDERS
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +28,18 @@ class IngestionService:
         )
         if existing:
             return existing, False
-        # Fixture extraction is used ONLY for explicit demo messages, never for live email.
         try:
             analysis = fixture_analysis if is_demo else self.analyzer.analyze(message)
             if analysis is None:
                 raise ValueError("Missing extraction")
         except Exception:
             analysis = fallback(message, "Błąd analizy AI")
-        classification, reasons = safety.evaluate(
-            analysis, message, self.settings, DEMO_SENDERS if is_demo else None
+
+        queued = analysis.classification == "needs_reply"
+        notes = list(dict.fromkeys([*analysis.warnings, *analysis.risk_flags]))
+        values = analysis.model_dump(
+            exclude={"classification", "sender_name", "is_binary", "warnings", "push_text"}
         )
-        values = analysis.model_dump(exclude={"classification", "sender_name", "is_binary"})
         decision = Decision(
             **values,
             gmail_message_id=message.gmail_message_id,
@@ -52,15 +51,14 @@ class IngestionService:
             subject=message.subject,
             received_at=message.received_at,
             original_body=message.body,
-            classification=classification,
-            safety_reasons=reasons,
+            classification=analysis.classification,
+            safety_reasons=notes,
             is_demo=is_demo,
-            status="analyzed",
+            status="pending" if queued else "skipped",
         )
-        decision.status = "pending" if classification == "microdecision" else "review_required"
         session.add(decision)
         try:
-            session.commit()  # Persist the unique message ID before any notification.
+            session.commit()
         except IntegrityError:
             session.rollback()
             existing = session.scalar(
@@ -69,12 +67,13 @@ class IngestionService:
             if existing is None:
                 raise
             return existing, False
-        if decision.status == "pending":
+        if queued:
             try:
-                self.push.notify(decision.id)
+                blurb = (analysis.push_text or analysis.request_text or decision.subject or "").strip()
+                self.push.notify(decision.id, blurb[:120] or None)
             except Exception as exc:
                 logger.warning("Push failed without affecting ingestion: %s", type(exc).__name__)
-        return decision, True
+        return decision, queued
 
     def sync(self):
         if self.settings.app_mode != "live":
@@ -85,8 +84,8 @@ class IngestionService:
             imported = 0
             with self.sessions() as session:
                 for message in self.gmail.fetch_messages(session):
-                    _, is_new = self.ingest(session, message)
-                    imported += int(is_new)
+                    _, queued = self.ingest(session, message)
+                    imported += int(queued)
             self.last_sync_at = utcnow().isoformat()
             self.last_sync_error = None
             return {"imported": imported, "synced_at": self.last_sync_at}

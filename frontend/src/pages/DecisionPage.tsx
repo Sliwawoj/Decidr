@@ -116,7 +116,10 @@ export default function DecisionPage({
       />
     );
   const d = decision;
-  const review = d.classification === "review_required";
+  const warnings = [
+    ...d.safety_reasons,
+    ...d.risk_flags.filter((flag) => !d.safety_reasons.includes(flag)),
+  ];
   const done = ["sent", "demo_completed"].includes(d.status);
   const gmailUrl =
     "https://mail.google.com/mail/u/0/#all/" +
@@ -143,6 +146,19 @@ export default function DecisionPage({
         <div className="notice notice-success" role="status">
           <Check size={18} />
           {notice}
+        </div>
+      )}
+      {warnings.length > 0 && !done && (
+        <div className="notice notice-warning" role="status">
+          <ShieldCheck size={18} />
+          <div>
+            <strong>Warto spojrzeć uważniej</strong>
+            <ul className="warning-list">
+              {warnings.map((warning, index) => (
+                <li key={index}>{warning}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
       {done && (
@@ -191,7 +207,7 @@ export default function DecisionPage({
               })}
             </div>
             <div className="request-body">
-              <div className="section-eyebrow">O CO CHODZI?</div>
+              <div className="section-eyebrow">DECYZJA</div>
               <h2>{d.request_text}</h2>
               <p>{d.summary}</p>
             </div>
@@ -246,58 +262,12 @@ export default function DecisionPage({
           <div className="detail-security">
             <ShieldCheck size={17} />
             <span>
-              {review
-                ? "Filtr bezpieczeństwa zatrzymał tę sprawę."
-                : "Znany nadawca · sprawdzona kwota i zakres prośby"}
+              Odpowiedź wyślemy dopiero po Twoim osobnym potwierdzeniu.
             </span>
           </div>
         </div>
         <div className="action-column">
-          {review ? (
-            <Card className="review-detail">
-              <div className="review-detail-icon">
-                <ShieldCheck size={28} />
-              </div>
-              <Badge className="badge-warning">Wymaga Twojej uwagi</Badge>
-              <h2>
-                Ta sprawa potrzebuje
-                <br />
-                pełnego kontekstu.
-              </h2>
-              <p>
-                Nie sprowadzamy jej do prostej zgody lub odmowy. Zapoznaj się z
-                oryginalną wiadomością.
-              </p>
-              <ul>
-                {d.safety_reasons.map((r, i) => (
-                  <li key={i}>
-                    <span />
-                    {r}
-                  </li>
-                ))}
-              </ul>
-              {d.missing_fields.length > 0 && (
-                <div className="missing-fields">
-                  <strong>Brakujące informacje</strong>
-                  <p>{d.missing_fields.join(", ")}</p>
-                </div>
-              )}
-              {!d.is_demo && (
-                <Button asChild>
-                  <a href={gmailUrl} target="_blank" rel="noreferrer">
-                    Sprawdź w Gmail
-                    <ExternalLink size={16} />
-                  </a>
-                </Button>
-              )}
-              {d.is_demo && (
-                <p className="small-muted">
-                  To przykładowa sprawa. W trybie Gmail otworzysz stąd
-                  oryginalny wątek.
-                </p>
-              )}
-            </Card>
-          ) : d.status === "pending" ? (
+          {d.status === "pending" ? (
             <Card className="choose-card">
               <div className="step-label">
                 <span>01</span>TWÓJ WYBÓR

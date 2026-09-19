@@ -19,11 +19,11 @@ export interface Decision {
   risk_flags: string[];
   safety_reasons: string[];
   confidence: number;
-  classification: "microdecision" | "review_required";
+  classification: "needs_reply" | "skip";
   status:
     | "analyzed"
     | "pending"
-    | "review_required"
+    | "skipped"
     | "draft_ready"
     | "sent"
     | "demo_completed";
@@ -43,7 +43,6 @@ export interface AppStatus {
   gmail: { configured: boolean; connected: boolean; email: string | null };
   llm: { configured: boolean; model: string };
   push: { configured: boolean; public_key: string | null };
-  policy: { max_amount: number; currency: string; min_confidence: number };
   last_sync_at: string | null;
   last_sync_error: string | null;
 }

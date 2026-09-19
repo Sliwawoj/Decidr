@@ -13,10 +13,9 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DecisionCard, Empty, ErrorNotice, money } from "@/components/common";
+import { DecisionCard, Empty, ErrorNotice } from "@/components/common";
 import type { AppStatus, Decision } from "@/types";
 import { api } from "@/services/api";
 
@@ -24,7 +23,7 @@ interface Props {
   decisions: Decision[];
   status: AppStatus;
   refresh: () => Promise<void>;
-  view: "queue" | "review" | "history";
+  view: "queue" | "history";
 }
 export default function QueuePage({ decisions, status, refresh, view }: Props) {
   const [filter, setFilter] = useState("all");
@@ -33,20 +32,17 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
   const [error, setError] = useState("");
   const pending = decisions.filter((d) => d.status === "pending");
   const drafts = decisions.filter((d) => d.status === "draft_ready");
-  const review = decisions.filter((d) => d.status === "review_required");
   const done = decisions.filter((d) =>
     ["sent", "demo_completed"].includes(d.status),
   );
   const visible =
     view === "history"
       ? done
-      : view === "review"
-        ? review
-        : filter === "drafts"
-          ? drafts
-          : filter === "pending"
-            ? pending
-            : [...drafts, ...pending];
+      : filter === "drafts"
+        ? drafts
+        : filter === "pending"
+          ? pending
+          : [...drafts, ...pending];
   async function sync() {
     setBusy(true);
     setMessage("");
@@ -74,19 +70,11 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
               ? "ZAMKNIĘTE WĄTKI"
               : "TWÓJ DZIEŃ, TROCHĘ PROSTSZY"}
           </div>
-          <h1>
-            {view === "review"
-              ? "Sprawy z pełnym kontekstem"
-              : view === "history"
-                ? "Historia decyzji"
-                : "Twoje decyzje"}
-          </h1>
+          <h1>{view === "history" ? "Historia decyzji" : "Twoje decyzje"}</h1>
           <p>
-            {view === "review"
-              ? "Te sprawy zasługują na więcej niż „tak” lub „nie”."
-              : view === "history"
-                ? "Twoje wybory i zatwierdzone odpowiedzi w jednym miejscu."
-                : "Najważniejsze z maila. Jasny wybór. Ty decydujesz."}
+            {view === "history"
+              ? "Twoje wybory i zatwierdzone odpowiedzi w jednym miejscu."
+              : "Wiadomości, które czekają na Twoją reakcję."}
           </p>
         </div>
         <Button
@@ -118,7 +106,7 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
             <span>Czeka na Twój wybór</span>
             <strong>{pending.length.toString().padStart(2, "0")}</strong>
           </div>
-          <span className="stat-caption">proste decyzje</span>
+          <span className="stat-caption">szybka odpowiedź</span>
         </Card>
         <Card className="stat-card">
           <div className="stat-icon icon-amber">
@@ -172,9 +160,7 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
           ) : (
             <div className="section-toolbar">
               <h2>
-                {view === "history"
-                  ? "Zakończone"
-                  : "Do samodzielnego sprawdzenia"}{" "}
+                Zakończone{" "}
                 <span className="inline-count">{visible.length}</span>
               </h2>
             </div>
@@ -189,11 +175,9 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
               title={
                 view === "history"
                   ? "Historia dopiero się zaczyna"
-                  : view === "review"
-                    ? "Wszystko jasne"
-                    : filter === "drafts"
-                      ? "Nie masz otwartych draftów"
-                      : "W kolejce jest spokojnie"
+                  : filter === "drafts"
+                    ? "Nie masz otwartych draftów"
+                    : "W kolejce jest spokojnie"
               }
               description={
                 view === "history"
@@ -203,57 +187,6 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
                     : "Nowe sprawy pojawią się tutaj po synchronizacji."
               }
             />
-          )}
-          {view === "queue" && review.length > 0 && (
-            <section className="review-section">
-              <div className="section-toolbar">
-                <h2>
-                  <ShieldCheck size={18} />
-                  Potrzebują pełnego kontekstu{" "}
-                  <span className="inline-count">{review.length}</span>
-                </h2>
-              </div>
-              <p className="section-description">
-                Zatrzymane przez filtr bezpieczeństwa. Bez uproszczonej decyzji.
-              </p>
-              <Card className="review-list">
-                {review.map((d) => (
-                  <Link
-                    key={d.id}
-                    to={"/decisions/" + d.id}
-                    className="review-row"
-                  >
-                    <div
-                      className={
-                        "review-mark " +
-                        (d.amount && d.amount > status.policy.max_amount
-                          ? "risk-mark"
-                          : "")
-                      }
-                    >
-                      <ShieldCheck size={18} />
-                    </div>
-                    <div>
-                      <h3>{d.subject}</h3>
-                      <p>
-                        {d.sender_name}
-                        <span>·</span>
-                        {d.missing_fields.length
-                          ? "Brak istotnych informacji"
-                          : d.safety_reasons.find((r) =>
-                              r.includes("prawny"),
-                            ) || "Wymaga sprawdzenia"}
-                      </p>
-                    </div>
-                    <ArrowRight size={17} />
-                  </Link>
-                ))}
-              </Card>
-              <Link className="text-link review-more" to="/review">
-                Zobacz wszystkie sprawy
-                <ArrowRight size={15} />
-              </Link>
-            </section>
           )}
         </div>
         <aside className="context-rail">
@@ -298,20 +231,13 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
           <Card className="policy-card">
             <div className="policy-heading">
               <ShieldCheck size={18} />
-              <strong>Twój filtr bezpieczeństwa</strong>
+              <strong>Jak działa kolejka</strong>
               <span className="online-dot" />
             </div>
-            <p>Do kolejki trafiają tylko proste prośby od znanych nadawców.</p>
-            <div className="policy-rule">
-              <span>Limit kwoty</span>
-              <strong>
-                {money(status.policy.max_amount, status.policy.currency)}
-              </strong>
-            </div>
-            <div className="policy-rule">
-              <span>Tematy wrażliwe</span>
-              <Badge className="badge-neutral">Pełny kontekst</Badge>
-            </div>
+            <p>
+              Gemini ocenia każdy mail. Bez decyzji — pomijamy. Z decyzją —
+              krótki opis w powiadomieniu i karta w kolejce.
+            </p>
             <Link className="text-link" to="/integrations">
               Zasady i integracje
               <ArrowUpRightIcon />

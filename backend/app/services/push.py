@@ -28,14 +28,15 @@ class PushService:
         except IntegrityError:
             session.rollback()  # Another tab may have just saved the same subscription.
 
-    def notify(self, decision_id):
+    def notify(self, decision_id, body: str | None = None):
         if not self.settings.push_configured:
             return
-        # No email text or sender details on a potentially shared lock screen.
+        # Short decision blurb only — no sender address or full email body on the lock screen.
+        text = (body or "").strip() or "Nowa sprawa czeka na Twój wybór."
         payload = json.dumps(
             {
                 "title": "Decidr · nowa decyzja",
-                "body": "Bezpieczna mikrodecyzja czeka na Twój wybór.",
+                "body": text[:120],
                 "url": f"/decisions/{decision_id}",
             }
         )

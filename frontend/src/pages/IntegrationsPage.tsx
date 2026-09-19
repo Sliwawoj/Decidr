@@ -20,7 +20,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ErrorNotice, money } from "@/components/common";
+import { ErrorNotice } from "@/components/common";
 import { api } from "@/services/api";
 import { subscribeToPush } from "@/services/push";
 import type { AppStatus } from "@/types";
@@ -224,39 +224,21 @@ export default function IntegrationsPage({
             Konkretne granice.
           </h2>
           <p>
-            AI porządkuje prośbę. Filtr bezpieczeństwa może ją zatrzymać.
-            Decyzja zawsze należy do Ciebie.
+            Gemini ocenia mail w dwóch krokach. Ty zatwierdzasz odpowiedź.
           </p>
         </div>
         <div className="rules-list">
           <div>
             <Check size={18} />
-            <span>Tylko znani nadawcy i jednoznaczne prośby</span>
+            <span>1. Czy potrzebna decyzja? Jeśli nie — pomijamy</span>
           </div>
           <div>
             <Check size={18} />
-            <span>
-              Limit kwoty:{" "}
-              <strong>{money(s.policy.max_amount, s.policy.currency)}</strong>
-            </span>
+            <span>2. Krótki opis decyzji → powiadomienie + kolejka</span>
           </div>
           <div>
             <Check size={18} />
-            <span>
-              Minimalna pewność analizy:{" "}
-              <strong>{Math.round(s.policy.min_confidence * 100)}%</strong>
-            </span>
-          </div>
-          <div>
-            <ShieldCheck size={18} />
-            <span>
-              Tematy prawne, personalne i strategiczne wymagają pełnego
-              kontekstu
-            </span>
-          </div>
-          <div>
-            <Check size={18} />
-            <span>Wybór → draft → edycja → osobne potwierdzenie</span>
+            <span>Wybór → draft → osobne potwierdzenie wysyłki</span>
           </div>
         </div>
       </Card>
