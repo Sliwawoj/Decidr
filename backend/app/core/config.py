@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:5173/api/oauth/gmail/callback"
-    sync_interval_seconds: int = 120
+    sync_interval_seconds: int = 30
     gmail_query: str = "in:inbox -from:me"
     vapid_public_key: str = ""
     vapid_private_key: str = ""
@@ -50,7 +50,12 @@ class Settings(BaseSettings):
 
     @property
     def push_configured(self) -> bool:
-        return bool(self.vapid_public_key and self.vapid_private_key)
+        if not (self.vapid_public_key and self.vapid_private_key):
+            return False
+        # Uncompressed EC public ≈ 65 bytes; private scalar ≈ 32 bytes (urlsafe b64).
+        pub_len = len(self.vapid_public_key.rstrip("="))
+        priv_len = len(self.vapid_private_key.rstrip("="))
+        return pub_len >= 80 and priv_len <= 50
 
     def ensure_data_dir(self):
         if self.database_url.startswith("sqlite:///") and ":memory:" not in self.database_url:

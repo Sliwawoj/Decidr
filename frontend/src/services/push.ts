@@ -22,11 +22,12 @@ export async function subscribeToPush(publicKey: string) {
   const applicationServerKey = new Uint8Array(
     [...decoded].map((char) => char.charCodeAt(0)),
   );
-  const subscription =
-    (await registration.pushManager.getSubscription()) ||
-    (await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey,
-    }));
+  // Drop a previous subscription if VAPID keys changed (common after fixing .env).
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) await existing.unsubscribe();
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey,
+  });
   await request("/push/subscriptions", "POST", subscription.toJSON());
 }

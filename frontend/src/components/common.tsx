@@ -19,12 +19,42 @@ export const typeNames: Record<string, string> = {
   routine: "Rutynowa prośba",
   other: "Inna sprawa",
 };
-export const money = (amount: number, currency = "PLN") =>
-  new Intl.NumberFormat("pl-PL", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+
+const CURRENCY_ALIASES: Record<string, string> = {
+  ZL: "PLN",
+  ZŁ: "PLN",
+  PLZ: "PLN",
+  "€": "EUR",
+  EURO: "EUR",
+  $: "USD",
+  US$: "USD",
+  "£": "GBP",
+};
+
+function normalizeCurrency(raw: string | null | undefined): string {
+  const cleaned = (raw || "PLN").trim().toUpperCase().replace(/\s+/g, "");
+  if (/^[A-Z]{3}$/.test(cleaned)) return cleaned;
+  if (CURRENCY_ALIASES[cleaned]) return CURRENCY_ALIASES[cleaned];
+  // LLM sometimes glues symbol + amount ("zł80142") — peel a known prefix.
+  for (const [alias, code] of Object.entries(CURRENCY_ALIASES)) {
+    if (cleaned.startsWith(alias)) return code;
+  }
+  if (cleaned.startsWith("PLN")) return "PLN";
+  return "PLN";
+}
+
+export const money = (amount: number, currency = "PLN") => {
+  const code = normalizeCurrency(currency);
+  try {
+    return new Intl.NumberFormat("pl-PL", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${amount.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} ${code}`;
+  }
+};
 export const date = (value: string, full = false) =>
   new Intl.DateTimeFormat("pl-PL", {
     day: "numeric",

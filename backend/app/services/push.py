@@ -52,10 +52,11 @@ class PushService:
                         ttl=300,
                     )
                 except WebPushException as exc:
-                    if exc.response is not None and exc.response.status_code in (404, 410):
+                    status = exc.response.status_code if exc.response is not None else None
+                    if status in (404, 410):
                         session.delete(subscription)
                     else:
-                        logger.warning("Push delivery failed")
-                except Exception:
-                    logger.warning("Push configuration or delivery failed")
+                        logger.warning("Push delivery failed (HTTP %s): %s", status, exc)
+                except Exception as exc:
+                    logger.warning("Push configuration or delivery failed: %s", exc)
             session.commit()

@@ -32,7 +32,8 @@ request_text: the same decision question, clear and complete (can match push_tex
 summary: 1-2 sentence short paraphrase of what the email is about (context, not the question).
 decision_type: purchase|invoice|schedule|routine|other
 conditions / missing_fields / risk_flags / warnings: short Polish lists; use [] when empty.
-Amounts are TOTAL gross. deadline is ISO YYYY-MM-DD or null.
+Amounts are TOTAL gross. currency must be ISO 4217 only (PLN, EUR, USD) or null — never symbols like zł.
+deadline is ISO YYYY-MM-DD or null.
 classification must be needs_reply. is_binary true when yes/no fits.
 """
 
@@ -110,6 +111,23 @@ def skipped(message: NormalizedMessage, reason: str) -> Analysis:
     )
 
 
+def _normalize_currency(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    cleaned = raw.strip().upper().replace(" ", "")
+    aliases = {"ZL": "PLN", "ZŁ": "PLN", "PLZ": "PLN", "€": "EUR", "EURO": "EUR", "$": "USD", "£": "GBP"}
+    if len(cleaned) == 3 and cleaned.isalpha():
+        return cleaned
+    if cleaned in aliases:
+        return aliases[cleaned]
+    for alias, code in aliases.items():
+        if cleaned.startswith(alias):
+            return code
+    if cleaned.startswith("PLN"):
+        return "PLN"
+    return None
+
+
 def _to_analysis(extracted: ExtractedDecision, sender_name: str) -> Analysis:
     allowed = {"purchase", "invoice", "schedule", "routine", "other"}
     kind = extracted.decision_type if extracted.decision_type in allowed else "other"
@@ -123,7 +141,7 @@ def _to_analysis(extracted: ExtractedDecision, sender_name: str) -> Analysis:
         request_text=question,
         push_text=push,
         amount=extracted.amount,
-        currency=extracted.currency,
+        currency=_normalize_currency(extracted.currency),
         deadline=extracted.deadline,
         conditions=list(extracted.conditions or []),
         missing_fields=list(extracted.missing_fields or []),

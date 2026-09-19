@@ -56,11 +56,11 @@ export default function App() {
     if ("serviceWorker" in navigator)
       navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
-  // Refresh queue summaries as scheduler imports messages; detail editors keep their own snapshot.
+  // Refresh queue as the backend syncs Gmail (~30s); keep the UI lag under one poll.
   useEffect(() => {
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
-    }, 30000);
+    }, 10000);
     return () => window.clearInterval(id);
   }, [refresh]);
 
