@@ -75,7 +75,7 @@ To konfiguracja aplikacji, nie wtyczka Gmail do Codex. Nie wpisuj sekretów do k
 5. Dodaj dokładny redirect URI: `http://localhost:5173/api/oauth/gmail/callback`.
 6. Uzupełnij `GOOGLE_CLIENT_ID` i `GOOGLE_CLIENT_SECRET`.
 7. Ustaw `KNOWN_SENDERS` na rozdzielone przecinkami dokładne adresy znanych nadawców. Domyślnie lista jest pusta, więc wszystkie prawdziwe wiadomości wymagają pełnego kontekstu.
-8. Dodaj `OPENAI_API_KEY`. Opcjonalnie zmień `OPENAI_MODEL` na dostępny na Twoim koncie model obsługujący Structured Outputs; domyślnie `gpt-4o-mini`.
+8. Dodaj `GEMINI_API_KEY` z [Google AI Studio](https://aistudio.google.com/apikey). Opcjonalnie zmień `GEMINI_MODEL` na dostępny na Twoim koncie model obsługujący structured JSON; domyślnie `gemini-2.5-flash`.
 9. Uruchom ponownie backend/Compose. Zaloguj się hasłem aplikacji i w **Integracje** wybierz **Połącz konto Gmail**.
 10. Użyj **Synchronizuj Gmail**. APScheduler wykonuje synchronizację również co 120 sekund.
 
@@ -85,7 +85,7 @@ Synchronizacja pobiera MIME `format=raw`, preferuje `text/plain`, dekoduje znaki
 
 Odpowiedź używa `threadId`, `In-Reply-To`, `References` i zgodnego tematu. Stan OAuth ma 10-minutową ważność, jest jednorazowy i używa PKCE. Tokeny są przechowywane zaszyfrowane; jedna baza obsługuje jedną skrzynkę. Nie zmieniaj klucza szyfrowania bez ponownej autoryzacji konta.
 
-W trybie live wiadomości z wybranego zakresu skrzynki są przekazywane do API OpenAI w celu analizy. Wywołanie ustawia `store=False`. Prompt traktuje treść maila jako niezaufane dane, a odpowiedź jest parsowana do modelu Pydantic. Odmowa, niekompletny wynik, brak klucza lub wyjątek → `review_required`.
+W trybie live wiadomości z wybranego zakresu skrzynki są przekazywane do API Gemini w celu analizy. Prompt traktuje treść maila jako niezaufane dane, a odpowiedź jest parsowana do modelu Pydantic. Odmowa, niekompletny wynik, brak klucza lub wyjątek → `review_required`.
 
 Jeśli wystawiasz aplikację poza localhost, skonfiguruj HTTPS, poprawny `FRONTEND_URL`, redirect URI i `COOKIE_SECURE=true`. Do demonstracji używaj dedykowanej skrzynki testowej.
 
@@ -108,7 +108,7 @@ Modularny monolit, jedna baza, jeden proces backendu. Bez Celery, Redisa i mikro
 | `backend/app/services/ingestion.py` | Analiza → Safety Policy → unikalny zapis → push; blokada równoległych synchronizacji |
 | `backend/app/services/drafts.py` | Wybór, edycja, kontrola wersji, potwierdzenie, symulacja i atomowe rozpoczęcie wysyłki |
 | `backend/app/services/gmail.py` | OAuth, szyfrowane tokeny, MIME, pobieranie i odpowiedź w wątku |
-| `backend/app/services/analyzer.py` | Structured Outputs i bezpieczny fallback |
+| `backend/app/services/analyzer.py` | Gemini structured JSON i bezpieczny fallback |
 | `backend/app/services/push.py` | Subskrypcje, VAPID i niezależna od kolejki obsługa błędów |
 | `backend/app/db/models.py` | Decyzje, subskrypcje i połączenie Gmail |
 | `backend/app/api/routes.py` | Cienkie endpointy i sesja |
@@ -172,15 +172,15 @@ Workflow `.github/workflows/ci.yml` dodaje testy backendu, typecheck/build, uruc
 - Jedna skrzynka i jeden użytkownik na bazę. Jedna instancja backendu; lokalny scheduler i blokady nie są projektem rozproszonym.
 - To konserwatywny filtr, nie gwarancja poprawności ani kompletne zabezpieczenie przed prompt injection lub spoofingiem. Reguły słownikowe mogą zatrzymywać bezpieczne sprawy; nie rozumieją wszystkich wariantów języka. Finalną treść ocenia człowiek.
 - Kwoty akceptowane tylko w jednej walucie, bez przeliczania kursów. Data dzienna, bez osobnego stanu upływu godziny; porównanie dat w strefie Europe/Warsaw.
-- Domyślna synchronizacja obejmuje ostatnie 7 dni w Inbox, maksymalnie 500 wiadomości na przebieg. Dla małej skrzynki hackathonowej; duże skrzynki wymagają historyId/cursora i lepszego limitowania pracy.
+- Synchronizacja od momentu połączenia Gmail (bez backfillu historii), maksymalnie 500 wiadomości na przebieg. Dla małej skrzynki hackathonowej; duże skrzynki wymagają historyId/cursora i lepszego limitowania pracy.
 - Załączniki i długie/nieprawidłowe wiadomości wymagają ręcznego sprawdzenia. Nie śledzimy zmian wątku po analizie. Drafty są prostymi szablonami na podstawie zaakceptowanego wyboru.
 - Nie ma automatycznego ponawiania niepewnej wysyłki, mechanizmu rozstrzygania jej wyniku, migracji schematu ani wieloużytkownikowego logowania.
 - Sekrety OAuth są szyfrowane, treści maili i drafty w SQLite nie. Nie ma jeszcze polityki retencji, backupów ani pełnego audytu.
-- Prawdziwe wywołania Gmail, OpenAI i Web Push wymagają własnej konfiguracji. Ich obecność w kodzie i testy z podstawionym klientem nie są testem autoryzacji na realnym koncie.
+- Prawdziwe wywołania Gmail, Gemini i Web Push wymagają własnej konfiguracji. Ich obecność w kodzie i testy z podstawionym klientem nie są testem autoryzacji na realnym koncie.
 - Docker Compose został przygotowany i statycznie sprawdzony. Na komputerze implementacji nie było Docker Engine/Desktop, więc lokalnie wykonano uruchomienie bez kontenerów; uruchomienie kontenerów pozostaje do weryfikacji na hoście z Dockerem.
 
 ## Dokumentacja źródłowa integracji
 
-- [OpenAI Structured Outputs i Pydantic](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [Gemini structured outputs](https://ai.google.dev/gemini-api/docs/structured-output)
 - [Gmail: wysyłanie wiadomości i odpowiedzi](https://developers.google.com/workspace/gmail/api/guides/sending)
 - [shadcn/ui z Vite i Tailwind](https://ui.shadcn.com/docs/installation/vite)

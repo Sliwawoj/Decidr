@@ -18,7 +18,7 @@ from httplib2 import Http
 from sqlalchemy import select
 
 from app.core.errors import DomainError
-from app.db.models import Decision, GmailConnection
+from app.db.models import Decision, GmailConnection, utcnow
 from app.schemas.decision import NormalizedMessage
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]
@@ -154,9 +154,38 @@ class GmailService:
         encrypted = self.cipher().encrypt(credentials.to_json().encode()).decode()
         if record:
             record.encrypted_credentials = encrypted
+            if record.connected_at is None:
+                record.connected_at = utcnow()
         else:
-            session.add(GmailConnection(id=1, email=email, encrypted_credentials=encrypted))
+            session.add(
+                GmailConnection(
+                    id=1,
+                    email=email,
+                    encrypted_credentials=encrypted,
+                    connected_at=utcnow(),
+                )
+            )
         session.commit()
+
+    def sync_cutoff(self, session):
+        record = session.get(GmailConnection, 1)
+        if not record:
+            return None
+        if record.connected_at is None:
+            record.connected_at = utcnow()
+            session.commit()
+        connected = record.connected_at
+        return connected if connected.tzinfo else connected.replace(tzinfo=timezone.utc)
+
+    def list_query(self, cutoff):
+        query = self.settings.gmail_query.strip() or "in:inbox -from:me"
+        if cutoff is None:
+            return query
+        # Gmail after: is exclusive of the given day; step back one day, then filter by connected_at.
+        from datetime import timedelta
+
+        day = (cutoff.astimezone(timezone.utc) - timedelta(days=1)).strftime("%Y/%m/%d")
+        return f"({query}) after:{day}"
 
     def complete_oauth(self, session, code, state, verifier):
         flow = self.flow(state, verifier)
@@ -189,6 +218,8 @@ class GmailService:
 
     def fetch_messages(self, session):
         client = self.client(session)
+        cutoff = self.sync_cutoff(session)
+        query = self.list_query(cutoff)
         page = None
         # Bounded hackathon sync. Persisted IDs, not UNREAD flags, are our processing checkpoint.
         for _ in range(10):
@@ -197,7 +228,7 @@ class GmailService:
                 .messages()
                 .list(
                     userId="me",
-                    q=self.settings.gmail_query,
+                    q=query,
                     maxResults=50,
                     pageToken=page,
                 )
@@ -212,7 +243,11 @@ class GmailService:
                     .get(userId="me", id=item["id"], format="raw")
                     .execute(num_retries=0)
                 )
-                yield parse_message(resource)
+                message = parse_message(resource)
+                # Gmail after: is day-granular; drop anything received before connect time.
+                if cutoff is not None and message.received_at < cutoff:
+                    continue
+                yield message
             page = result.get("nextPageToken")
             if not page:
                 break

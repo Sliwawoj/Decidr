@@ -88,7 +88,7 @@ def status(request: Request, session=Depends(session_db)):
             "connected": bool(connection),
             "email": connection.email if connection else None,
         },
-        "llm": {"configured": bool(settings.openai_api_key), "model": settings.openai_model},
+        "llm": {"configured": settings.llm_configured, "model": settings.gemini_model},
         "push": {
             "configured": settings.push_configured,
             "public_key": settings.vapid_public_key if settings.push_configured else None,

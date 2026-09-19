@@ -64,3 +64,5 @@ class GmailConnection(Base):
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     encrypted_credentials: Mapped[str] = mapped_column(Text)
     email: Mapped[str] = mapped_column(String)
+    # Only messages received at/after this moment are analyzed (no mailbox backfill).
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

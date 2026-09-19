@@ -1,7 +1,8 @@
 import json
 import logging
 
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 from app.schemas.decision import Analysis, NormalizedMessage
 
@@ -43,26 +44,30 @@ class LLMAnalyzer:
         self.settings = settings
 
     def analyze(self, message: NormalizedMessage) -> Analysis:
-        if not self.settings.openai_api_key:
+        if not self.settings.gemini_api_key:
             return fallback(message, "Analiza AI nie jest skonfigurowana")
         try:
-            with OpenAI(api_key=self.settings.openai_api_key, timeout=25, max_retries=1) as client:
-                response = client.responses.parse(
-                    model=self.settings.openai_model,
-                    input=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": json.dumps(message.model_dump(mode="json"), ensure_ascii=False),
-                        },
-                    ],
-                    text_format=Analysis,
-                    store=False,
+            client = genai.Client(
+                api_key=self.settings.gemini_api_key,
+                http_options=types.HttpOptions(timeout=25_000),
+            )
+            response = client.models.generate_content(
+                model=self.settings.gemini_model,
+                contents=json.dumps(message.model_dump(mode="json"), ensure_ascii=False),
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    response_schema=Analysis,
                     max_output_tokens=2000,
-                )
-                if response.output_parsed is None or response.status != "completed":
-                    return fallback(message, "Model nie zwrócił kompletnej analizy")
-                return response.output_parsed
+                    temperature=0,
+                ),
+            )
+            parsed = response.parsed
+            if parsed is None:
+                return fallback(message, "Model nie zwrócił kompletnej analizy")
+            if isinstance(parsed, Analysis):
+                return parsed
+            return Analysis.model_validate(parsed)
         except Exception as exc:
             # Never log message bodies, credentials or provider exception contents.
             logger.warning("Analysis failed: %s", type(exc).__name__)

@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     session_secret: str = "demo-only-change-before-live-use"
     cookie_secure: bool = False
     token_encryption_key: str = ""
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash-lite"
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:5173/api/oauth/gmail/callback"
@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     allowed_currency: str = "PLN"
     min_confidence: float = Field(default=0.9, ge=0, le=1)
     sync_interval_seconds: int = Field(default=120, ge=30)
-    gmail_query: str = "in:inbox newer_than:7d -from:me"
+    # Base Gmail search. Sync always adds after: from connected_at and skips older messages.
+    gmail_query: str = "in:inbox -from:me"
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@example.com"
@@ -51,6 +52,10 @@ class Settings(BaseSettings):
     @property
     def gmail_configured(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def llm_configured(self) -> bool:
+        return bool(self.gemini_api_key)
 
     @property
     def push_configured(self) -> bool:
