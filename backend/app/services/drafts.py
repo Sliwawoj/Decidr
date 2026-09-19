@@ -20,8 +20,8 @@ def get_decision(session, decision_id, settings):
     return decision
 
 
-def writable(decision, status, version):
-    if decision.classification != "needs_reply" or decision.status != status:
+def writable(decision, status, version, *, classifications=("needs_reply",)):
+    if decision.classification not in classifications or decision.status != status:
         raise DomainError("Ta sprawa nie pozwala na taką zmianę stanu.")
     if decision.version != version:
         raise DomainError("Sprawa zmieniła się w innej karcie. Odśwież widok.")
@@ -44,7 +44,7 @@ def update_versioned(session, decision, version, **values):
 
 
 def choose(session, decision, choice, version, analyzer=None):
-    writable(decision, "pending", version)
+    writable(decision, "pending", version, classifications=("needs_reply",))
     if analyzer is not None:
         draft = analyzer.suggest_draft(decision, choice)
     else:
@@ -58,14 +58,14 @@ def choose(session, decision, choice, version, analyzer=None):
 
 
 def edit(session, decision, draft, version):
-    writable(decision, "draft_ready", version)
+    writable(decision, "draft_ready", version, classifications=("needs_reply", "needs_review"))
     return update_versioned(session, decision, version, draft=draft)
 
 
 def send(session, decision, confirmed, version, settings, gmail):
     if confirmed is not True:
         raise DomainError("Wymagane jest osobne potwierdzenie wysyłki.", 422)
-    writable(decision, "draft_ready", version)
+    writable(decision, "draft_ready", version, classifications=("needs_reply", "needs_review"))
     if not decision.draft or not decision.draft.strip():
         raise DomainError("Draft nie może być pusty.")
     if decision.deadline and date.fromisoformat(decision.deadline) < datetime.now(

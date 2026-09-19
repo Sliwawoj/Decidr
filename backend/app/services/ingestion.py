@@ -34,8 +34,19 @@ class IngestionService:
         queued = analysis.classification in {"needs_reply", "needs_review"}
         notes = list(dict.fromkeys([*analysis.warnings, *analysis.risk_flags]))
         values = analysis.model_dump(
-            exclude={"classification", "sender_name", "is_binary", "warnings", "push_text"}
+            exclude={"classification", "sender_name", "is_binary", "warnings", "push_text", "draft"}
         )
+        draft = (analysis.draft or "").strip()
+        if analysis.classification == "needs_review" and not draft:
+            draft = self.analyzer.suggest_review_draft(
+                analysis, original_body=message.body, subject=message.subject
+            )
+        if analysis.classification == "needs_review":
+            status = "draft_ready"
+        elif queued:
+            status = "pending"
+        else:
+            status = "skipped"
         decision = Decision(
             **values,
             gmail_message_id=message.gmail_message_id,
@@ -50,7 +61,8 @@ class IngestionService:
             classification=analysis.classification,
             safety_reasons=notes,
             is_demo=is_demo,
-            status="pending" if queued else "skipped",
+            status=status,
+            draft=draft or None,
         )
         session.add(decision)
         try:

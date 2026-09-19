@@ -1130,6 +1130,33 @@ svg {
   letter-spacing: -0.5px;
   color: #355575;
 }
+.analysis-flags {
+  margin: 4px 0 18px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid #edf1f5;
+  border-radius: 9px;
+}
+.analysis-flags .section-eyebrow {
+  margin-bottom: 10px;
+}
+.analysis-flags dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.analysis-flags dt {
+  font-size: 10px;
+  color: #8e9aac;
+  margin-bottom: 3px;
+}
+.analysis-flags dd {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: #355575;
+}
 .conditions {
   padding: 17px 19px;
   background: #f8fafc;
@@ -1227,6 +1254,10 @@ svg {
   font-size: 12px;
   line-height: 1.9;
   margin: 11px 0 23px;
+}
+.choose-card > a,
+.choose-card > button {
+  width: 100%;
 }
 .choice-buttons {
   display: grid;

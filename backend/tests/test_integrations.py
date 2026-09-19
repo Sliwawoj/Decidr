@@ -15,6 +15,34 @@ from app.services.demo import fixtures
 from app.services.gmail import GmailService
 
 
+def test_normalize_draft_newlines_unescapes_literal_backslash_n():
+    from app.services.analyzer import _normalize_draft_newlines
+
+    literal = r"Dzień dobry,\n\nWyrażam zgodę.\n\nPozdrawiam"
+    assert _normalize_draft_newlines(literal) == "Dzień dobry,\n\nWyrażam zgodę.\n\nPozdrawiam"
+    already = "Dzień dobry,\n\nWyrażam zgodę.\n\nPozdrawiam"
+    assert _normalize_draft_newlines(already) == already
+    # Mixed: real newlines already present and dominate — leave alone
+    mixed = "Linia 1\nLinia 2 z \\n w środku"
+    assert _normalize_draft_newlines(mixed) == mixed
+
+
+def test_suggest_draft_unescapes_literal_newlines(settings):
+    from app.services.analyzer import ReplyDraft
+
+    message, analysis = next(fixtures())
+    analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
+    with patch("app.services.analyzer.genai.Client") as sdk:
+        client = sdk.return_value
+        client.models.generate_content.return_value = SimpleNamespace(
+            parsed=ReplyDraft(draft=r"Dzień dobry,\n\nPotwierdzam.\n\nPozdrawiam")
+        )
+        draft = analyzer.suggest_draft(analysis, "approve")
+        assert "\n\n" in draft
+        assert "\\n" not in draft
+        assert draft.startswith("Dzień dobry")
+
+
 def test_two_step_llm_gate_and_extract(settings):
     from app.services.analyzer import DecisionGate, ExtractedDecision
 
@@ -42,7 +70,7 @@ def test_two_step_llm_gate_and_extract(settings):
             SimpleNamespace(parsed=extracted),
         ]
         result = analyzer.analyze(message)
-        assert result.classification == "needs_review"
+        assert result.classification == "needs_reply"
         assert result.push_text == analysis.push_text
         assert result.request_text == analysis.request_text
         assert result.summary == analysis.summary
@@ -50,6 +78,43 @@ def test_two_step_llm_gate_and_extract(settings):
         gate_args, extract_args = client.models.generate_content.call_args_list
         assert gate_args.kwargs["config"].response_schema.__name__ == "DecisionGate"
         assert extract_args.kwargs["config"].response_schema.__name__ == "ExtractedDecision"
+
+
+def test_needs_review_adds_open_draft_llm_call(settings):
+    from app.services.analyzer import DecisionGate, ExtractedDecision, ReplyDraft
+
+    message, analysis = next(fixtures())
+    analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
+    extracted = ExtractedDecision(
+        decision_type=analysis.decision_type,
+        summary=analysis.summary,
+        request_text=analysis.request_text,
+        push_text=analysis.push_text,
+        amount=analysis.amount,
+        currency=analysis.currency,
+        deadline=analysis.deadline,
+        conditions=analysis.conditions,
+        missing_fields=analysis.missing_fields,
+        risk_flags=analysis.risk_flags,
+        warnings=analysis.warnings,
+        confidence=analysis.confidence,
+        is_binary=False,
+    )
+    with patch("app.services.analyzer.genai.Client") as sdk:
+        client = sdk.return_value
+        client.models.generate_content.side_effect = [
+            SimpleNamespace(parsed=DecisionGate(needs_decision=True, reason="Wymaga odpowiedzi")),
+            SimpleNamespace(parsed=extracted),
+            SimpleNamespace(parsed=ReplyDraft(draft="Dzień dobry,\n\nPropozycja odpowiedzi.\n\nPozdrawiam")),
+        ]
+        result = analyzer.analyze(message)
+        assert result.classification == "needs_review"
+        assert "Propozycja odpowiedzi" in result.draft
+        assert client.models.generate_content.call_count == 3
+        assert (
+            client.models.generate_content.call_args_list[2].kwargs["config"].response_schema.__name__
+            == "ReplyDraft"
+        )
 
 
 def test_gate_skip_skips_second_llm_call(settings):
@@ -71,8 +136,8 @@ def test_classification_uses_gate_and_binary_flags():
     from app.services.analyzer import classify_message
 
     assert classify_message(False, True) == "skip"
-    assert classify_message(True, False) == "needs_reply"
-    assert classify_message(True, True) == "needs_review"
+    assert classify_message(True, False) == "needs_review"
+    assert classify_message(True, True) == "needs_reply"
 
 
 def test_llm_failure_raises_without_fallback(settings):

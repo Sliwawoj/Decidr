@@ -136,10 +136,12 @@ export function StatusBadge({ decision: d }: { decision: Decision }) {
         Wysłano
       </Badge>
     );
+  if (d.classification === "needs_review")
+    return <Badge className="badge-warning">needs_review</Badge>;
   return (
     <Badge className="badge-success">
       <ShieldCheck size={12} />
-      Szybka odpowiedź
+      needs_reply
     </Badge>
   );
 }
@@ -182,11 +184,16 @@ export function DecisionCard({ decision: d }: { decision: Decision }) {
             {d.deadline && (
               <span className="deadline">Termin: {date(d.deadline)}</span>
             )}
-            {d.status === "draft_ready" && (
+            {d.status === "draft_ready" && d.user_choice && (
               <span className="deadline">
                 Twój wybór: {d.user_choice === "approve" ? "Zezwól" : "Odrzuć"}
               </span>
             )}
+            {d.status === "draft_ready" &&
+              !d.user_choice &&
+              d.classification === "needs_review" && (
+                <span className="deadline">Draft do edycji</span>
+              )}
           </div>
           <span className="card-action">
             {d.status === "draft_ready" ? "Sprawdź draft" : "Otwórz sprawę"}

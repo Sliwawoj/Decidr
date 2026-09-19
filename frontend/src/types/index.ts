@@ -20,6 +20,8 @@ export interface Decision {
   safety_reasons: string[];
   confidence: number;
   classification: "needs_reply" | "needs_review" | "skip";
+  needs_decision: boolean;
+  is_binary: boolean;
   status:
     | "analyzed"
     | "pending"

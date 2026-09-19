@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, computed_field, field_validator
 
 
 class Analysis(BaseModel):
@@ -21,6 +21,7 @@ class Analysis(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0.8, ge=0, le=1)
     is_binary: bool = True
+    draft: str = ""
 
     @field_validator("amount")
     @classmethod
@@ -79,6 +80,16 @@ class DecisionOut(BaseModel):
     send_attempted_at: datetime | None
     send_error: str | None
     version: int
+
+    @computed_field
+    @property
+    def needs_decision(self) -> bool:
+        return self.classification != "skip"
+
+    @computed_field
+    @property
+    def is_binary(self) -> bool:
+        return self.classification == "needs_reply"
 
     @field_validator("received_at", "created_at", "updated_at", "sent_at", "send_attempted_at")
     @classmethod

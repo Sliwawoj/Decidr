@@ -78,6 +78,46 @@ def test_high_stakes_and_skips_via_ingest(client, settings):
     assert all(row["gmail_message_id"] != "skip-newsletter" for row in client.get("/api/decisions").json())
 
 
+def test_needs_review_skips_choice_and_opens_editable_draft(client):
+    state = client.app.state
+    message, analysis = next(fixtures())
+    message = message.model_copy(update={"gmail_message_id": "review-open-draft"})
+    review = analysis.model_copy(
+        update={
+            "classification": "needs_review",
+            "is_binary": False,
+            "draft": "Dzień dobry,\n\nPropozycja LLM.\n\nPozdrawiam",
+        }
+    )
+    with state.sessions() as session:
+        row, queued = state.ingestion.ingest(session, message, True, review)
+        assert queued and row.status == "draft_ready"
+        assert row.classification == "needs_review"
+        assert row.user_choice is None
+        assert "Propozycja LLM" in (row.draft or "")
+        decision_id, version = row.id, row.version
+    assert (
+        client.post(
+            f"/api/decisions/{decision_id}/choice",
+            json={"choice": "approve", "version": version},
+        ).status_code
+        == 409
+    )
+    edited = client.patch(
+        f"/api/decisions/{decision_id}/draft",
+        json={"draft": "Dzień dobry,\n\nPoprawiona odpowiedź.\n\nPozdrawiam", "version": version},
+    )
+    assert edited.status_code == 200
+    body = edited.json()
+    assert body["draft"].startswith("Dzień dobry")
+    assert "Poprawiona" in body["draft"]
+    sent = client.post(
+        f"/api/decisions/{decision_id}/send",
+        json={"confirmed": True, "version": body["version"]},
+    )
+    assert sent.status_code == 200
+    assert sent.json()["status"] == "demo_completed"
+
 def test_push_uses_short_decision_blurb(client, settings):
     state = client.app.state
     message, analysis = next(fixtures())
