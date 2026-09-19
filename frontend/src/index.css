@@ -1265,6 +1265,33 @@ svg {
   gap: 12px;
   margin-top: 27px;
 }
+.dismiss-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: #9aa8b7;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.dismiss-action:hover:not(:disabled) {
+  color: #b45a5a;
+  background: #f8f1f1;
+}
+.dismiss-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .choice-note {
   display: flex;
   gap: 7px;

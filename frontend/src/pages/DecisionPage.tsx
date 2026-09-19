@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,6 +15,7 @@ import {
   Save,
   Send,
   ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,7 @@ export default function DecisionPage({
   refresh: () => Promise<void>;
 }) {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [decision, setDecision] = useState<Decision | null>(null);
   const [draftText, setDraftText] = useState("");
   const [error, setError] = useState("");
@@ -89,6 +91,20 @@ export default function DecisionPage({
       setBusy(false);
     }
   }
+  async function dismiss() {
+    if (!decision) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.dismiss(decision);
+      await refresh();
+      navigate("/");
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
   async function prepareConfirmation() {
     if (!decision) return;
     const saved =
@@ -121,6 +137,8 @@ export default function DecisionPage({
     ...d.risk_flags.filter((flag) => !d.safety_reasons.includes(flag)),
   ];
   const done = ["sent", "demo_completed"].includes(d.status);
+  const canDismiss =
+    ["pending", "draft_ready"].includes(d.status) && !d.send_attempted_at;
   const gmailUrl =
     "https://mail.google.com/mail/u/0/#all/" +
     encodeURIComponent(d.gmail_thread_id);
@@ -331,6 +349,17 @@ export default function DecisionPage({
                   Odrzuć
                 </Button>
               </div>
+              {canDismiss && (
+                <button
+                  type="button"
+                  className="dismiss-action"
+                  disabled={busy}
+                  onClick={() => void dismiss()}
+                >
+                  <Trash2 size={14} />
+                  Nie odpowiadaj — usuń z kolejki
+                </button>
+              )}
               <div className="choice-note">
                 <LockKeyhole size={15} />
                 Ten krok tylko przygotuje draft.
@@ -430,6 +459,17 @@ export default function DecisionPage({
                       Przejdź do potwierdzenia
                     </Button>
                   </div>
+                  {canDismiss && (
+                    <button
+                      type="button"
+                      className="dismiss-action"
+                      disabled={busy}
+                      onClick={() => void dismiss()}
+                    >
+                      <Trash2 size={14} />
+                      Nie odpowiadaj — usuń z kolejki
+                    </button>
+                  )}
                   <div className="choice-note">
                     <LockKeyhole size={15} />
                     Przed {d.is_demo ? "symulacją" : "wysyłką"} pokażemy pełny

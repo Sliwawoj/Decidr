@@ -26,6 +26,7 @@ export interface Decision {
     | "analyzed"
     | "pending"
     | "skipped"
+    | "dismissed"
     | "draft_ready"
     | "sent"
     | "demo_completed";

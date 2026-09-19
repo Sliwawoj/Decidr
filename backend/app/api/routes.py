@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.core.errors import DomainError
 from app.db.models import Decision, GmailConnection
-from app.schemas.decision import ChoiceIn, DecisionOut, DraftIn, PushIn, SendIn
+from app.schemas.decision import ChoiceIn, DecisionOut, DismissIn, DraftIn, PushIn, SendIn
 from app.services import demo, drafts
 
 router = APIRouter(prefix="/api")
@@ -104,7 +104,7 @@ def list_decisions(request: Request, session=Depends(session_db)):
         select(Decision)
         .where(
             Decision.is_demo.is_(request.app.state.settings.app_mode == "demo"),
-            Decision.status != "skipped",
+            drafts.visible_filter(),
         )
         .order_by(Decision.received_at.desc())
     ).all()
@@ -140,6 +140,14 @@ def choose(decision_id: str, data: ChoiceIn, request: Request, session=Depends(s
     return drafts.choose(
         session, decision, data.choice, data.version, analyzer=request.app.state.ingestion.analyzer
     )
+
+
+@router.post(
+    "/decisions/{decision_id}/dismiss", response_model=DecisionOut, dependencies=[Depends(authorized)]
+)
+def dismiss(decision_id: str, data: DismissIn, request: Request, session=Depends(session_db)):
+    decision = drafts.get_decision(session, decision_id, request.app.state.settings)
+    return drafts.dismiss(session, decision, data.version)
 
 
 @router.patch(

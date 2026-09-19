@@ -50,6 +50,10 @@ export const api = {
       choice,
       version: d.version,
     }),
+  dismiss: (d: Decision) =>
+    request<Decision>("/decisions/" + d.id + "/dismiss", "POST", {
+      version: d.version,
+    }),
   edit: (d: Decision, draft: string) =>
     request<Decision>("/decisions/" + d.id + "/draft", "PATCH", {
       draft,

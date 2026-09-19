@@ -6,13 +6,20 @@ from sqlalchemy import select, update
 from app.core.errors import DomainError
 from app.db.models import Decision, utcnow
 
+# Soft-hidden: analyzer noise + user "don't reply". Kept so Gmail sync won't re-import.
+HIDDEN_STATUSES = ("skipped", "dismissed")
+
+
+def visible_filter():
+    return Decision.status.notin_(HIDDEN_STATUSES)
+
 
 def get_decision(session, decision_id, settings):
     decision = session.scalar(
         select(Decision).where(
             Decision.id == decision_id,
             Decision.is_demo.is_(settings.app_mode == "demo"),
-            Decision.status != "skipped",
+            visible_filter(),
         )
     )
     if decision is None:
@@ -55,6 +62,19 @@ def choose(session, decision, choice, version, analyzer=None):
         )
         draft = f"Dzień dobry,\n\n{answer}\n\n{decision.request_text}\n\nPozdrawiam"
     return update_versioned(session, decision, version, user_choice=choice, draft=draft, status="draft_ready")
+
+
+def dismiss(session, decision, version):
+    """Remove from queue without sending a reply. Distinct from reject (which drafts a refusal)."""
+    if decision.classification not in ("needs_reply", "needs_review"):
+        raise DomainError("Ta sprawa nie pozwala na taką zmianę stanu.")
+    if decision.status not in ("pending", "draft_ready"):
+        raise DomainError("Ta sprawa nie pozwala na taką zmianę stanu.")
+    if decision.version != version:
+        raise DomainError("Sprawa zmieniła się w innej karcie. Odśwież widok.")
+    if decision.send_attempted_at:
+        raise DomainError("Wysyłka była już rozpoczęta. Sprawdź oryginalny wątek w Gmail.")
+    return update_versioned(session, decision, version, status="dismissed")
 
 
 def edit(session, decision, draft, version):
