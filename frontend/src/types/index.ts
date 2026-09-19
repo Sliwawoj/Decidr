@@ -19,7 +19,7 @@ export interface Decision {
   risk_flags: string[];
   safety_reasons: string[];
   confidence: number;
-  classification: "needs_reply" | "skip";
+  classification: "needs_reply" | "needs_review" | "skip";
   status:
     | "analyzed"
     | "pending"

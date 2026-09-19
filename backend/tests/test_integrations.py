@@ -42,7 +42,7 @@ def test_two_step_llm_gate_and_extract(settings):
             SimpleNamespace(parsed=extracted),
         ]
         result = analyzer.analyze(message)
-        assert result.classification == "needs_reply"
+        assert result.classification == "needs_review"
         assert result.push_text == analysis.push_text
         assert result.request_text == analysis.request_text
         assert result.summary == analysis.summary
@@ -67,22 +67,28 @@ def test_gate_skip_skips_second_llm_call(settings):
         assert client.models.generate_content.call_count == 1
 
 
-def test_llm_failure_falls_back_to_queue(settings):
+def test_classification_uses_gate_and_binary_flags():
+    from app.services.analyzer import classify_message
+
+    assert classify_message(False, True) == "skip"
+    assert classify_message(True, False) == "needs_reply"
+    assert classify_message(True, True) == "needs_review"
+
+
+def test_llm_failure_raises_without_fallback(settings):
     message, _ = next(fixtures())
     analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
     with patch("app.services.analyzer.genai.Client") as sdk:
         sdk.return_value.models.generate_content.side_effect = TimeoutError()
-        result = analyzer.analyze(message)
-        assert result.classification == "needs_reply"
-        assert result.confidence == 0
-        assert result.push_text
+        with pytest.raises(RuntimeError, match="Błąd analizy AI"):
+            analyzer.analyze(message)
 
 
-def test_missing_llm_key_never_uses_demo_analysis(settings):
+def test_missing_llm_key_raises_without_fallback(settings):
     message, _ = next(fixtures())
     with patch("app.services.analyzer.genai.Client") as sdk:
-        result = LLMAnalyzer(settings).analyze(message)
-        assert result.classification == "needs_reply"
+        with pytest.raises(RuntimeError, match="Gemini API key"):
+            LLMAnalyzer(settings).analyze(message)
         sdk.assert_not_called()
 
 

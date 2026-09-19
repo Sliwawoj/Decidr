@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 
 class Analysis(BaseModel):
-    classification: Literal["needs_reply", "skip"]
+    classification: Literal["needs_reply", "needs_review", "skip"]
     decision_type: Literal["purchase", "invoice", "schedule", "routine", "other"]
     sender_name: str
     summary: str
