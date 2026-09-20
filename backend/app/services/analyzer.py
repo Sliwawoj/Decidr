@@ -200,7 +200,10 @@ class LLMAnalyzer:
         draft = f"Dzień dobry,\n\n{answer}\n\n{decision.request_text}"
         if decision.conditions:
             draft += "\n\nWarunki:\n" + "\n".join(f"• {c}" for c in decision.conditions)
-        return draft + "\n\nPozdrawiam"
+        signature = (self.settings.email_signature or "Z poważaniem").strip()
+        if signature:
+            draft += "\n\n" + signature
+        return draft
 
     def analyze(self, message: NormalizedMessage) -> Analysis:
         if not self.settings.gemini_api_key:

@@ -42,6 +42,24 @@ def test_health_status_and_live_capsules(client):
     assert client.get("/api/decisions").status_code == 200
 
 
+def test_email_signature_is_configurable_and_appended_to_drafts(client):
+    status = client.get("/api/status").json()
+    assert status["email_signature"] == "Z poważaniem"
+
+    row = draft(client)
+    assert row["draft"].rstrip().endswith("Z poważaniem")
+
+    response = client.patch("/api/settings", json={"email_signature": "Pozdrawiam serdecznie,\nAnna Nowak"})
+    assert response.status_code == 200
+    assert response.json()["email_signature"] == "Pozdrawiam serdecznie,\nAnna Nowak"
+
+    updated = client.get("/api/status").json()
+    assert updated["email_signature"] == "Pozdrawiam serdecznie,\nAnna Nowak"
+
+    row2 = draft(client)
+    assert row2["draft"].rstrip().endswith("Anna Nowak")
+
+
 def test_idempotent_ingestion_and_failed_push(client):
     state = client.app.state
     message, analysis = next(fixtures())

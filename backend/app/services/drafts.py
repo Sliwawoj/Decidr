@@ -42,7 +42,14 @@ def update_versioned(session, decision, version, **values):
     return decision
 
 
-def choose(session, decision, choice, version, analyzer=None):
+def _append_signature(draft: str, settings) -> str:
+    signature = (settings.email_signature or "Z poważaniem").strip()
+    if not signature:
+        return draft.strip()
+    return f"{draft.strip()}\n\n{signature}".strip()
+
+
+def choose(session, decision, choice, version, analyzer=None, settings=None):
     writable(decision, "pending", version)
     if analyzer is not None:
         draft = analyzer.suggest_draft(decision, choice)
@@ -52,7 +59,9 @@ def choose(session, decision, choice, version, analyzer=None):
             if choice == "approve"
             else "Nie wyrażam zgody na poniższą prośbę."
         )
-        draft = f"Dzień dobry,\n\n{answer}\n\n{decision.request_text}\n\nPozdrawiam"
+        draft = f"Dzień dobry,\n\n{answer}\n\n{decision.request_text}"
+    if settings is not None:
+        draft = _append_signature(draft, settings)
     return update_versioned(session, decision, version, user_choice=choice, draft=draft, status="draft_ready")
 
 

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@example.com"
+    email_signature: str = "Z poważaniem"
     scheduler_enabled: bool = True
 
     @model_validator(mode="after")

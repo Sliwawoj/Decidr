@@ -27,7 +27,24 @@ export default function IntegrationsPage({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [signature, setSignature] = useState(s.email_signature);
   const [params] = useSearchParams();
+
+  const saveSignature = async () => {
+    setBusy("signature");
+    setError("");
+    setNotice("");
+    try {
+      const saved = await api.saveSettings(signature);
+      setSignature(saved.email_signature);
+      setNotice("Podpis został zapisany.");
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
   async function run(name: string, fn: () => Promise<void>) {
     setBusy(name);
     setError("");
@@ -180,6 +197,46 @@ export default function IntegrationsPage({
           </p>
         </Card>
       </div>
+      <Card className="integration-card" style={{ width: "100%" }}>
+        <div className="integration-top">
+          <div className="integration-icon icon-green">
+            <ShieldCheck size={24} />
+          </div>
+          <Badge className="badge-neutral">Podpis maila</Badge>
+        </div>
+        <h2>Podpis w odpowiedziach</h2>
+        <p>Dodawany jest na końcu każdej przygotowanej odpowiedzi.</p>
+        <textarea
+          value={signature}
+          onChange={(event) => setSignature(event.target.value)}
+          rows={4}
+          style={{
+            width: "100%",
+            resize: "vertical",
+            borderRadius: 12,
+            border: "1px solid rgba(148, 163, 184, 0.5)",
+            padding: "0.75rem 0.9rem",
+            background: "rgba(15, 23, 42, 0.02)",
+            color: "inherit",
+            fontFamily: "inherit",
+            marginTop: "0.5rem",
+          }}
+        />
+        <div className="draft-actions" style={{ marginTop: "1rem" }}>
+          <Button
+            variant="outline"
+            disabled={busy === "signature" || signature === s.email_signature}
+            onClick={() => void saveSignature()}
+          >
+            {busy === "signature" ? (
+              <LoaderCircle size={16} className="spin" />
+            ) : (
+              <Check size={16} />
+            )}
+            Zapisz podpis
+          </Button>
+        </div>
+      </Card>
       <Card className="rules-panel">
         <div>
           <div className="rail-icon">

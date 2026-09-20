@@ -63,4 +63,8 @@ export const api = {
   sync: () => request<{ imported: number }>("/gmail/sync", "POST"),
   login: (password: string) => request("/session", "POST", { password }),
   oauth: () => request<{ url: string }>("/oauth/gmail/start", "POST"),
+  saveSettings: (emailSignature: string) =>
+    request<{ email_signature: string }>("/settings", "PATCH", {
+      email_signature: emailSignature,
+    }),
 };

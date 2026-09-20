@@ -36,6 +36,7 @@ export interface AppStatus {
   gmail: { configured: boolean; connected: boolean; email: string | null };
   llm: { configured: boolean; model: string };
   push: { configured: boolean; public_key: string | null };
+  email_signature: string;
   last_sync_at: string | null;
   last_sync_error: string | null;
 }
