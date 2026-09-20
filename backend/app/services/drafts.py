@@ -11,7 +11,6 @@ def get_decision(session, decision_id, settings):
     decision = session.scalar(
         select(Decision).where(
             Decision.id == decision_id,
-            Decision.is_demo.is_(settings.app_mode == "demo"),
             Decision.status != "skipped",
         )
     )
@@ -72,9 +71,6 @@ def send(session, decision, confirmed, version, settings, gmail):
         ZoneInfo("Europe/Warsaw")
     ).date():
         raise DomainError("Termin już minął. Sprawdź oryginalną wiadomość zamiast wysyłać odpowiedź.")
-    if decision.is_demo:
-        # Deliberately before any Gmail access. sent_at remains NULL.
-        return update_versioned(session, decision, version, status="demo_completed")
     if settings.app_mode != "live":
         raise DomainError("Prawdziwa wysyłka jest wyłączona.", 403)
 

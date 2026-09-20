@@ -4,7 +4,7 @@ Spokojne miejsce na proste decyzje operacyjne z maila. MVP na hackathon: **React
 
 Decidr przygotowuje kartę i odpowiedź. Użytkownik podejmuje decyzję, edytuje draft i **osobno potwierdza** ostatni krok. Ważne sprawy dostają ostrzeżenie, ale zostają w jednej kolejce szybkiej odpowiedzi.
 
-## Demo — jedno polecenie
+## Uruchamianie lokalne
 
 Wymagania: Docker Engine/Desktop i Docker Compose **2.24+** (obsługa opcjonalnego pliku env).
 
@@ -12,7 +12,7 @@ Wymagania: Docker Engine/Desktop i Docker Compose **2.24+** (obsługa opcjonalne
 docker compose up --build
 ```
 
-Otwórz **http://localhost:5173**. Pierwszy start automatycznie tworzy cztery przykładowe sprawy. Nie trzeba tworzyć `.env`, łączyć Gmaila ani podawać klucza LLM/VAPID.
+Otwórz **http://localhost:5173**. Aplikacja działa w trybie live i wymaga poprawnej konfiguracji sekretów oraz ewentualnie połączenia z Gmail i Gemini.
 
 - Frontend: Nginx na porcie 5173, API przez ten sam origin pod `/api`.
 - Backend: jeden proces FastAPI, port 8000 dostępny tylko wewnątrz sieci Compose.
@@ -20,20 +20,18 @@ Otwórz **http://localhost:5173**. Pierwszy start automatycznie tworzy cztery pr
 - Kontenery uruchamiają się w kolejności backend health check → frontend.
 - Port aplikacji domyślnie nasłuchuje tylko na localhost.
 - Zatrzymanie: `docker compose down`.
-- Reset przykładowych spraw: **Integracje → Zresetuj demo**. Usuwa wyłącznie dane demo.
 
-**Demo nigdy nie wywołuje Gmail API ani API modelu.** Wyniki ekstrakcji są oznaczonymi danymi demonstracyjnymi, ale przechodzą ten sam deterministyczny Safety Policy co dane rzeczywiste. Ostatni krok ustawia `demo_completed`, pozostawiając `sent_at = null`. Push może opcjonalnie działać również w demo, jeżeli samodzielnie skonfigurujesz VAPID.
+W trybie live nie ma osobnego trybu mockowego ani przykładowych danych aplikacyjnych. Każda decyzja ma swoje realne źródło w wiadomościach Gmail i wymaga użytkownika do zatwierdzenia finalnej odpowiedzi.
 
-## Scenariusz prezentacji (2–3 minuty)
+## Scenariusz pracy z kolejką
 
-1. Pokaż kolejkę: cztery przykładowe sprawy do działania. Widoczny bursztynowy pasek oznacza demo.
-2. Otwórz **Materiały do warsztatu z klientem**: znana nadawczyni, 249 PLN, termin i warunki.
-3. Kliknij **Zezwól**. Powstaje draft; nic nie jest wysyłane.
+1. Otwórz kolejkę i sprawdź nowe prośby z Gmail.
+2. Otwórz konkretną kartę: znana nadawczyni, kwota, termin i warunki.
+3. Kliknij **Zezwól** lub **Odrzuć**. Powstaje draft.
 4. Edytuj odpowiedź. Kliknij **Przejdź do potwierdzenia** — edycja zostanie zapisana.
 5. Sprawdź odbiorcę, temat i treść. Możesz wrócić do edycji.
-6. Kliknij **Potwierdzam symulację**. Komunikat: „Symulacja zakończona. Nic nie wysłaliśmy.” Sprawa jest w historii.
-7. Otwórz umowę za 85 000 PLN — też jest w kolejce do działania; Ty decydujesz.
-8. W drugiej sprawie możesz pokazać ścieżkę **Odrzuć**. Integracje pozwalają zresetować demo.
+6. Kliknij **Potwierdzam wysyłkę**. Wysłanie jest zatwierdzane dopiero po osobnym potwierdzeniu.
+7. W kolejce zostają widoczne kolejne sprawy wymagające decyzji.
 
 ## Uruchamianie bez Dockera
 
@@ -86,14 +84,14 @@ Odpowiedź używa `threadId`, `In-Reply-To`, `References` i zgodnego tematu. Sta
 
 W trybie live każdy nowy mail idzie najpierw do Gemini (czy potrzebna decyzja). Odrzucone wiadomości są pomijane (`skipped`). Przy `needs_decision` drugie wywołanie buduje kartę i krótki `push_text` do powiadomienia.
 
-Jeśli wystawiasz aplikację poza localhost, skonfiguruj HTTPS, poprawny `FRONTEND_URL`, redirect URI i `COOKIE_SECURE=true`. Do demonstracji używaj dedykowanej skrzynki testowej.
+Jeśli wystawiasz aplikację poza localhost, skonfiguruj HTTPS, poprawny `FRONTEND_URL`, redirect URI i `COOKIE_SECURE=true`. Do testów używaj dedykowanej skrzynki testowej.
 
 ## Web Push
 
 1. Wygeneruj parę VAPID: `.venv/Scripts/python.exe scripts/generate_vapid.py`.
 2. Skopiuj `VAPID_PUBLIC_KEY` i `VAPID_PRIVATE_KEY` do `.env`, ustaw prawdziwy kontakt `VAPID_SUBJECT=mailto:...` i zrestartuj backend.
 3. W przeglądarce wybierz **Integracje → Włącz na tym urządzeniu**.
-4. Nowa mikrodecyzja wywołuje Web Push po trwałym zapisie. W demo: po subskrypcji zresetuj przykładowe sprawy.
+4. Nowa mikrodecyzja wywołuje Web Push po trwałym zapisie.
 
 Wymagany jest HTTPS lub localhost oraz przeglądarka obsługująca Service Worker i Push API. Niektóre przeglądarki mobilne wymagają instalacji witryny na ekranie głównym. Odmowa zgody i błędy push nie wpływają na działanie kolejki. Subskrypcje 404/410 są usuwane. Notification click otwiera Kartę Decyzji. Powiadomienia nie zawierają treści wiadomości ani danych nadawcy. Service Worker nie zapisuje maili i draftów w cache.
 
@@ -115,9 +113,9 @@ Modularny monolit, jedna baza, jeden proces backendu. Bez Celery, Redisa i mikro
 | `frontend/src/pages/DecisionPage.tsx` | Wybór → edycja → utrwalony podgląd → jawne potwierdzenie |
 | `frontend/src/components/ui/` | Lokalne komponenty shadcn/ui z Radix i własnym stylem |
 | `frontend/public/sw.js` | Powiadomienia bez cache wiadomości |
-| `backend/tests/`, `frontend/tests/demo.spec.ts` | Reguły, API, integracje z podstawionymi usługami i demo w przeglądarce |
+| `backend/tests/`, `frontend/tests/` | Reguły, API i integracje z podstawionymi usługami |
 
-Przejścia: `analyzed → pending → draft_ready → sent`; pominięte maile: `skipped` (ukryte w API); w demo `draft_ready → demo_completed`. Stan analizowany nie jest publikowany przed zakończeniem filtra.
+Przejścia: `analyzed → pending → draft_ready → sent`; pominięte maile: `skipped` (ukryte w API). Stan analizowany nie jest publikowany przed zakończeniem filtra.
 
 Filtr MVP: pierwsze wywołanie Gemini decyduje o skip/queue. Drugie buduje kartę i krótki tekst powiadomienia. Ostrzeżenia pochodzą z modelu (`warnings` / `risk_flags`). Finalną treść zatwierdza człowiek.
 
@@ -127,7 +125,7 @@ Przed połączeniem z Gmail zapisywany jest atomowy `send_attempted_at`. Timeout
 
 ## API
 
-`GET /api/health`, `GET /api/status`, `POST|DELETE /api/session`, `GET /api/decisions`, `GET /api/decisions/{id}`, `POST /api/demo/load`, `POST /api/demo/reset`, `POST /api/gmail/sync`, `POST /api/decisions/{id}/choice`, `PATCH /api/decisions/{id}/draft`, `POST /api/decisions/{id}/send`, `POST /api/push/subscriptions`, `POST /api/oauth/gmail/start`, `GET /api/oauth/gmail/callback`.
+`GET /api/health`, `GET /api/status`, `POST|DELETE /api/session`, `GET /api/decisions`, `GET /api/decisions/{id}`, `POST /api/gmail/sync`, `POST /api/decisions/{id}/choice`, `PATCH /api/decisions/{id}/draft`, `POST /api/decisions/{id}/send`, `POST /api/push/subscriptions`, `POST /api/oauth/gmail/start`, `GET /api/oauth/gmail/callback`.
 
 Przykładowe body:
 
@@ -160,9 +158,9 @@ npx playwright install chromium
 npm test
 ```
 
-Testy przeglądarkowe wymagają działającego demo na **http://localhost:5173** i resetują wyłącznie jego dane demonstracyjne. Możesz testować serwery lokalne albo uruchomiony Compose. Domyślnie używają Chromium; aby wykorzystać zainstalowany Edge na Windows: `$env:PLAYWRIGHT_CHANNEL='msedge'; npm test`. Testy obejmują komputer i viewport telefonu; to emulacja rozmiaru i interakcji, nie test natywnego Safari/iOS. Zrzuty trafiają do ignorowanego folderu `.local`.
+Testy przeglądarkowe wymagają działającej aplikacji na **http://localhost:5173**. Możesz testować serwery lokalne albo uruchomiony Compose. Domyślnie używają Chromium; aby wykorzystać zainstalowany Edge na Windows: `$env:PLAYWRIGHT_CHANNEL='msedge'; npm test`. Testy obejmują komputer i viewport telefonu; to emulacja rozmiaru i interakcji, nie test natywnego Safari/iOS. Zrzuty trafiają do ignorowanego folderu `.local`.
 
-Backend sprawdza politykę bezpieczeństwa, duplikaty, stany, konflikty wersji, równoczesne potwierdzenia, kompletne demo i izolację prawdziwych danych. Integracje są testowane z podstawionymi klientami: w testach nie wysyłamy maili, nie wykonujemy płatnych wywołań modelu ani realnych powiadomień.
+Backend sprawdza politykę bezpieczeństwa, duplikaty, stany, konflikty wersji, równoczesne potwierdzenia i izolację prawdziwych danych. Integracje są testowane z podstawionymi klientami: w testach nie wysyłamy maili, nie wykonujemy płatnych wywołań modelu ani realnych powiadomień.
 
 Workflow `.github/workflows/ci.yml` dodaje testy backendu, typecheck/build, uruchomienie Compose i testy przeglądarkowe w CI.
 

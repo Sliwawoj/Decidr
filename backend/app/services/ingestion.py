@@ -21,13 +21,26 @@ class IngestionService:
         self.last_sync_at = None
         self.last_sync_error = None
 
-    def ingest(self, session, message, is_demo=False, fixture_analysis=None):
+    def ingest(self, session, message, *args, fixture_analysis=None):
+        is_demo = None
+        if args:
+            if len(args) == 1:
+                if isinstance(args[0], bool):
+                    is_demo = args[0]
+                else:
+                    fixture_analysis = args[0]
+            elif len(args) == 2:
+                is_demo, fixture_analysis = args
+            else:
+                raise TypeError("ingest() accepts at most two legacy compatibility arguments")
+        _ = is_demo
+
         existing = session.scalar(
             select(Decision).where(Decision.gmail_message_id == message.gmail_message_id)
         )
         if existing:
             return existing, False
-        analysis = fixture_analysis if is_demo else self.analyzer.analyze(message)
+        analysis = fixture_analysis if fixture_analysis is not None else self.analyzer.analyze(message)
         if analysis is None:
             raise ValueError("Missing extraction")
 
@@ -49,7 +62,6 @@ class IngestionService:
             original_body=message.body,
             classification=analysis.classification,
             safety_reasons=notes,
-            is_demo=is_demo,
             status="pending" if queued else "skipped",
         )
         session.add(decision)
@@ -73,7 +85,7 @@ class IngestionService:
 
     def sync(self):
         if self.settings.app_mode != "live":
-            raise DomainError("Synchronizacja Gmaila jest wyłączona w demo.", 400)
+            raise DomainError("Synchronizacja Gmaila jest wyłączona w trybie live.", 400)
         if not self.sync_lock.acquire(blocking=False):
             raise DomainError("Synchronizacja już trwa.")
         try:

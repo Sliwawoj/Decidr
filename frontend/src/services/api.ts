@@ -60,7 +60,6 @@ export const api = {
       confirmed: true,
       version: d.version,
     }),
-  reset: () => request<{ created: number }>("/demo/reset", "POST"),
   sync: () => request<{ imported: number }>("/gmail/sync", "POST"),
   login: (password: string) => request("/session", "POST", { password }),
   oauth: () => request<{ url: string }>("/oauth/gmail/start", "POST"),

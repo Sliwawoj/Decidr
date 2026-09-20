@@ -120,7 +120,7 @@ export default function DecisionPage({
     ...d.safety_reasons,
     ...d.risk_flags.filter((flag) => !d.safety_reasons.includes(flag)),
   ];
-  const done = ["sent", "demo_completed"].includes(d.status);
+  const done = d.status === "sent";
   const gmailUrl =
     "https://mail.google.com/mail/u/0/#all/" +
     encodeURIComponent(d.gmail_thread_id);
@@ -167,16 +167,8 @@ export default function DecisionPage({
             <CheckCheck size={25} />
           </span>
           <div>
-            <h2>
-              {d.is_demo
-                ? "Symulacja zakończona. Nic nie wysłaliśmy."
-                : "Odpowiedź została wysłana."}
-            </h2>
-            <p>
-              {d.is_demo
-                ? "Cały przepływ przetestowany. Twoja odpowiedź pozostała w przestrzeni demo."
-                : "Wiadomość jest w oryginalnym wątku Gmaila."}
-            </p>
+            <h2>Odpowiedź została wysłana.</h2>
+            <p>Wiadomość jest w oryginalnym wątku Gmaila.</p>
           </div>
           <Button asChild variant="outline">
             <Link to="/">
@@ -247,17 +239,15 @@ export default function DecisionPage({
               </summary>
               <div>{d.original_body}</div>
             </details>
-            {!d.is_demo && (
-              <a
-                className="text-link gmail-link"
-                href={gmailUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Otwórz w Gmail
-                <ExternalLink size={14} />
-              </a>
-            )}
+            <a
+              className="text-link gmail-link"
+              href={gmailUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Otwórz w Gmail
+              <ExternalLink size={14} />
+            </a>
           </Card>
           <div className="detail-security">
             <ShieldCheck size={17} />
@@ -380,8 +370,7 @@ export default function DecisionPage({
                   </div>
                   <div className="choice-note">
                     <LockKeyhole size={15} />
-                    Przed {d.is_demo ? "symulacją" : "wysyłką"} pokażemy pełny
-                    podgląd.
+                    Przed wysyłką pokażemy pełny podgląd.
                   </div>
                 </>
               )}
@@ -413,17 +402,11 @@ export default function DecisionPage({
           }}
         >
           <div className="modal-icon">
-            {d.is_demo ? <CheckCheck size={25} /> : <Send size={25} />}
+            <Send size={25} />
           </div>
-          <DialogTitle>
-            {d.is_demo
-              ? "Potwierdź zakończenie symulacji"
-              : "Potwierdź wysłanie odpowiedzi"}
-          </DialogTitle>
+          <DialogTitle>Potwierdź wysłanie odpowiedzi</DialogTitle>
           <DialogDescription>
-            {d.is_demo
-              ? "To ostatni krok demo. Żadna wiadomość nie zostanie wysłana."
-              : "Wyślemy dokładnie tę treść do wskazanego odbiorcy w oryginalnym wątku Gmaila."}
+            Wyślemy dokładnie tę treść do wskazanego odbiorcy w oryginalnym wątku Gmaila.
           </DialogDescription>
           <div className="confirmation-meta">
             <div>
@@ -450,7 +433,7 @@ export default function DecisionPage({
               ) : (
                 <Check size={17} />
               )}
-              {d.is_demo ? "Potwierdzam symulację" : "Potwierdzam i wysyłam"}
+              Potwierdzam i wysyłam
             </Button>
           </div>
         </DialogContent>

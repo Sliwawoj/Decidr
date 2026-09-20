@@ -92,13 +92,6 @@ export function StatusBadge({ decision: d }: { decision: Decision }) {
     return <Badge className="badge-warning">Sprawdź wysyłkę</Badge>;
   if (d.status === "draft_ready")
     return <Badge className="badge-blue">Draft do sprawdzenia</Badge>;
-  if (d.status === "demo_completed")
-    return (
-      <Badge className="badge-success">
-        <Check size={12} />
-        Symulacja zakończona
-      </Badge>
-    );
   if (d.status === "sent")
     return (
       <Badge className="badge-success">

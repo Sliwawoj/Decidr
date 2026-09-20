@@ -11,7 +11,6 @@ from app.core.errors import DomainError
 from app.db.session import create_database
 from app.scheduler import start_scheduler
 from app.services.analyzer import LLMAnalyzer
-from app.services.demo import load_demo
 from app.services.gmail import GmailService
 from app.services.ingestion import IngestionService
 from app.services.push import PushService
@@ -31,9 +30,6 @@ def create_app(settings: Settings | None = None):
         app.state.ingestion = IngestionService(
             settings, sessions, LLMAnalyzer(settings), app.state.gmail, app.state.push
         )
-        if settings.app_mode == "demo" and settings.demo_autoload:
-            with sessions() as session:
-                load_demo(session, app.state.ingestion)
         scheduler = start_scheduler(settings, app.state.ingestion)
         yield
         if scheduler:

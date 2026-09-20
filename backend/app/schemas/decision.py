@@ -72,12 +72,12 @@ class DecisionOut(BaseModel):
     status: str
     user_choice: str | None
     draft: str | None
-    is_demo: bool
     created_at: datetime
     updated_at: datetime
     sent_at: datetime | None
     send_attempted_at: datetime | None
     send_error: str | None
+    gmail_reply_id: str | None = None
     version: int
 
     @field_validator("received_at", "created_at", "updated_at", "sent_at", "send_attempted_at")

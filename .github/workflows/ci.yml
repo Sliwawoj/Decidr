@@ -1,7 +1,7 @@
 name: Decidr checks
 on: [push, pull_request]
 jobs:
-  demo:
+  checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -28,7 +28,7 @@ jobs:
           npm run typecheck
           npm run build
           npx playwright install --with-deps chromium
-      - name: Start demo containers
+      - name: Start app containers
         run: docker compose up --build -d --wait
       - name: Browser tests against Compose
         working-directory: frontend

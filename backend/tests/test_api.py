@@ -7,11 +7,24 @@ from sqlalchemy import select
 
 from app.db.models import Decision
 from app.main import create_app
-from app.services.demo import fixtures
+from app.services.fixtures import fixtures
 
 
 def pending(client):
-    return next(row for row in client.get("/api/decisions").json() if row["status"] == "pending")
+    response = client.get("/api/decisions")
+    rows = response.json()
+    if not isinstance(rows, list):
+        login = client.post("/api/session", json={"password": client.app.state.settings.app_password})
+        assert login.status_code == 200
+        rows = client.get("/api/decisions").json()
+    if not rows:
+        state = client.app.state
+        with state.sessions() as session:
+            from app.services.fixtures import load_fixture_rows
+
+            load_fixture_rows(session, state.ingestion)
+        rows = client.get("/api/decisions").json()
+    return next(row for row in rows if row["status"] == "pending")
 
 
 def draft(client, choice="approve"):
@@ -23,12 +36,10 @@ def draft(client, choice="approve"):
     return response.json()
 
 
-def test_health_status_and_idempotent_demo(client):
+def test_health_status_and_live_capsules(client):
     assert client.get("/api/health").json() == {"status": "ok"}
-    assert client.get("/api/status").json()["mode"] == "demo"
-    for _ in range(3):
-        assert client.post("/api/demo/load").json() == {"created": 0}
-    assert len(client.get("/api/decisions").json()) == 4
+    assert client.get("/api/status").json()["mode"] == "live"
+    assert client.get("/api/decisions").status_code == 200
 
 
 def test_idempotent_ingestion_and_failed_push(client):
@@ -37,9 +48,9 @@ def test_idempotent_ingestion_and_failed_push(client):
     message = message.model_copy(update={"gmail_message_id": "unique-message"})
     state.push.notify = Mock(side_effect=RuntimeError("no push"))
     with state.sessions() as session:
-        one, created = state.ingestion.ingest(session, message, True, analysis)
+        one, created = state.ingestion.ingest(session, message, fixture_analysis=analysis)
         assert created and one.status == "pending"
-        two, created = state.ingestion.ingest(session, message, True, analysis)
+        two, created = state.ingestion.ingest(session, message, fixture_analysis=analysis)
         assert not created and two.id == one.id
 
 
@@ -59,7 +70,7 @@ def test_high_stakes_and_skips_via_ingest(client, settings):
     message, analysis = legal
     message = message.model_copy(update={"gmail_message_id": "legal-live"})
     with state.sessions() as session:
-        row, queued = state.ingestion.ingest(session, message, True, analysis)
+        row, queued = state.ingestion.ingest(session, message, fixture_analysis=analysis)
         assert queued and row.status == "pending" and row.classification == "needs_reply"
         assert row.safety_reasons  # warnings from fixture / model
     skip_mail = message.model_copy(
@@ -84,7 +95,7 @@ def test_push_uses_short_decision_blurb(client, settings):
     message = message.model_copy(update={"gmail_message_id": "push-blurb"})
     state.push.notify = Mock()
     with state.sessions() as session:
-        row, queued = state.ingestion.ingest(session, message, True, analysis)
+        row, queued = state.ingestion.ingest(session, message, fixture_analysis=analysis)
         assert queued
     state.push.notify.assert_called_once()
     assert state.push.notify.call_args.args[0] == row.id
@@ -118,8 +129,9 @@ def test_send_missing_confirmation(client):
     )
 
 
-def test_full_demo_flow_and_repeat_send(client):
-    client.app.state.gmail.client = Mock(side_effect=AssertionError("No Gmail in demo"))
+def test_live_send_flow_and_repeat_send(client):
+    client.app.state.gmail.client = Mock(return_value=Mock())
+    client.app.state.gmail.send_reply = Mock(return_value="reply-id")
     row = draft(client)
     url = f"/api/decisions/{row['id']}"
     response = client.patch(
@@ -128,22 +140,16 @@ def test_full_demo_flow_and_repeat_send(client):
     assert response.status_code == 200
     edited = response.json()
     assert edited["draft"] == "Dziękuję, potwierdzam warunki."
-    # A confirmation from before the edit cannot send newer, unseen text.
     assert client.post(url + "/send", json={"confirmed": True, "version": row["version"]}).status_code == 409
     response = client.post(url + "/send", json={"confirmed": True, "version": edited["version"]})
     assert response.status_code == 200
     final = response.json()
-    assert final["status"] == "demo_completed"
-    assert final["sent_at"] is None and final["send_attempted_at"] is None
-    assert not client.app.state.gmail.client.called
+    assert final["status"] == "sent"
+    assert final["sent_at"] is not None and final["gmail_reply_id"] == "reply-id"
+    assert client.app.state.gmail.send_reply.called
     assert client.get(url).json()["draft"] == edited["draft"]
-    assert (
-        client.post(url + "/send", json={"confirmed": True, "version": final["version"]}).status_code == 409
-    )
-    assert (
-        client.post(url + "/choice", json={"choice": "reject", "version": final["version"]}).status_code
-        == 409
-    )
+    assert client.post(url + "/send", json={"confirmed": True, "version": final["version"]}).status_code == 409
+    assert client.post(url + "/choice", json={"choice": "reject", "version": final["version"]}).status_code == 409
 
 
 def test_empty_draft_and_wrong_version(client):
@@ -153,7 +159,7 @@ def test_empty_draft_and_wrong_version(client):
     assert client.patch(url, json={"draft": "Hello", "version": 1}).status_code == 409
 
 
-def test_reset_only_removes_demo(client):
+def test_live_ingest_stores_real_messages(client):
     state = client.app.state
     message, analysis = next(fixtures())
     message = message.model_copy(update={"gmail_message_id": "actual-email"})
@@ -161,16 +167,15 @@ def test_reset_only_removes_demo(client):
     with state.sessions() as session:
         real, _ = state.ingestion.ingest(session, message)
         real_id = real.id
-    assert client.get(f"/api/decisions/{real_id}").status_code == 404
-    assert client.post("/api/demo/reset").json()["created"] == 4
+    assert client.get(f"/api/decisions/{real_id}").status_code == 200
     with state.sessions() as session:
         assert session.get(Decision, real_id)
-        assert len(session.scalars(select(Decision)).all()) == 5
+        assert len(session.scalars(select(Decision)).all()) == 1
 
 
-def test_demo_blocks_gmail_oauth_and_unconfigured_push(client):
-    assert client.post("/api/gmail/sync").status_code == 400
-    assert client.post("/api/oauth/gmail/start").status_code == 400
+def test_live_blocks_gmail_oauth_and_unconfigured_push(client):
+    assert client.post("/api/gmail/sync").status_code == 503
+    assert client.post("/api/oauth/gmail/start").status_code == 503
     assert (
         client.post(
             "/api/push/subscriptions",
@@ -184,11 +189,13 @@ def test_demo_blocks_gmail_oauth_and_unconfigured_push(client):
 
 
 def test_csrf_guard(client):
-    assert client.post("/api/demo/reset", headers={"X-Decidr-Client": ""}).status_code == 403
-    assert client.post("/api/demo/reset", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert client.post("/api/gmail/sync", headers={"X-Decidr-Client": ""}).status_code == 403
+    assert client.post("/api/gmail/sync", headers={"Origin": "https://evil.example"}).status_code == 403
 
 
 def test_parallel_confirmations_complete_once(client):
+    client.app.state.gmail.client = Mock(return_value=Mock())
+    client.app.state.gmail.send_reply = Mock(return_value="reply-id")
     row = draft(client)
 
     def send():
@@ -217,7 +224,7 @@ def test_live_session_protects_data(settings):
         assert client.post("/api/session", json={"password": "incorrect"}).status_code == 401
         assert client.post("/api/session", json={"password": live.app_password}).status_code == 200
         assert client.get("/api/decisions").status_code == 200
-        assert client.post("/api/demo/reset").status_code == 400
+        assert client.post("/api/gmail/sync").status_code == 503
         assert client.get("/api/oauth/gmail/callback?state=forged&code=fake").status_code == 400
         assert client.delete("/api/session").status_code == 200
         assert client.get("/api/decisions").status_code == 401
@@ -234,7 +241,7 @@ def test_live_send_success_and_uncertain_failure(client, settings):
                 session, message.model_copy(update={"gmail_message_id": suffix}), True, analysis
             )
             row = drafts.choose(session, row, "approve", 1)
-            row.is_demo = False
+            row.send_error = None
             session.commit()
             gmail = Mock()
             gmail.send_reply = Mock(side_effect=TimeoutError()) if fail else Mock(return_value="reply-id")

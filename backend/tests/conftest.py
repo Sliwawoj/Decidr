@@ -11,7 +11,10 @@ def settings(tmp_path):
         _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         scheduler_enabled=False,
-        app_mode="demo",
+        app_mode="live",
+        app_password="test-password-123",
+        session_secret="1234567890abcdef1234567890abcdef",
+        token_encryption_key="yfvgCg-aPAcQRD68MigiuhnnE__cFywdjIwvAOt4tOk=",
     )
 
 
@@ -19,4 +22,6 @@ def settings(tmp_path):
 def client(settings):
     app = create_app(settings)
     with TestClient(app, headers={"X-Decidr-Client": "web"}) as client:
+        login = client.post("/api/session", json={"password": settings.app_password})
+        assert login.status_code == 200
         yield client

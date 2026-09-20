@@ -103,9 +103,9 @@ def fixtures():
             warnings,
         ) = row
         message = NormalizedMessage(
-            gmail_message_id=f"demo-{index + 1}",
-            gmail_thread_id=f"demo-thread-{index + 1}",
-            rfc_message_id=f"<demo-{index + 1}@decidr.example>",
+            gmail_message_id=f"fixture-{index + 1}",
+            gmail_thread_id=f"fixture-thread-{index + 1}",
+            rfc_message_id=f"<fixture-{index + 1}@decidr.example>",
             sender_name=name,
             sender_email=email,
             subject=subject,
@@ -132,15 +132,15 @@ def fixtures():
         yield message, analysis
 
 
-def load_demo(session, ingestion):
+def load_fixture_rows(session, ingestion):
     created = 0
     for message, analysis in fixtures():
-        _, queued = ingestion.ingest(session, message, is_demo=True, fixture_analysis=analysis)
+        _, queued = ingestion.ingest(session, message, fixture_analysis=analysis)
         created += int(queued)
     return created
 
 
-def reset_demo(session, ingestion):
-    session.execute(delete(Decision).where(Decision.is_demo.is_(True)))
+def reset_fixture_rows(session, ingestion):
+    session.execute(delete(Decision))
     session.commit()
-    return load_demo(session, ingestion)
+    return load_fixture_rows(session, ingestion)

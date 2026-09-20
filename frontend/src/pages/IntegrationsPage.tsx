@@ -90,18 +90,10 @@ export default function IntegrationsPage({
             </div>
             <Badge
               className={
-                s.mode === "demo"
-                  ? "badge-neutral"
-                  : s.gmail.connected
-                    ? "badge-success"
-                    : "badge-warning"
+                s.gmail.connected ? "badge-success" : "badge-warning"
               }
             >
-              {s.mode === "demo"
-                ? "Wyłączone w demo"
-                : s.gmail.connected
-                  ? "Połączono"
-                  : "Niepołączone"}
+              {s.gmail.connected ? "Połączono" : "Niepołączone"}
             </Badge>
           </div>
           <h2>Gmail</h2>
@@ -112,7 +104,7 @@ export default function IntegrationsPage({
           {s.gmail.email && <p className="connected-email">{s.gmail.email}</p>}
           <Button
             variant="outline"
-            disabled={!!busy || s.mode === "demo" || !s.gmail.configured}
+            disabled={!!busy || !s.gmail.configured}
             onClick={() =>
               void run("gmail", async () => {
                 const { url } = await api.oauth();
@@ -128,11 +120,9 @@ export default function IntegrationsPage({
             {s.gmail.connected ? "Połącz ponownie" : "Połącz konto Gmail"}
           </Button>
           <p className="integration-footnote">
-            {s.mode === "demo"
-              ? "Przełącz APP_MODE na live w konfiguracji, aby używać własnej skrzynki."
-              : !s.gmail.configured
-                ? "Wymaga danych Google OAuth w konfiguracji serwera."
-                : "Tylko odczyt wiadomości i wysyłka po Twoim potwierdzeniu."}
+            {!s.gmail.configured
+              ? "Wymaga danych Google OAuth w konfiguracji serwera."
+              : "Tylko odczyt wiadomości i wysyłka po Twoim potwierdzeniu."}
           </p>
         </Card>
         <Card className="integration-card">
@@ -141,19 +131,9 @@ export default function IntegrationsPage({
               <BrainCircuit size={24} />
             </div>
             <Badge
-              className={
-                s.mode === "demo"
-                  ? "badge-neutral"
-                  : s.llm.configured
-                    ? "badge-success"
-                    : "badge-warning"
-              }
+              className={s.llm.configured ? "badge-success" : "badge-warning"}
             >
-              {s.mode === "demo"
-                ? "Analizy przykładowe"
-                : s.llm.configured
-                  ? "Skonfigurowano"
-                  : "Brak klucza"}
+              {s.llm.configured ? "Skonfigurowano" : "Brak klucza"}
             </Badge>
           </div>
           <h2>Analiza AI</h2>
@@ -162,15 +142,11 @@ export default function IntegrationsPage({
             dodatkowo przez reguły bezpieczeństwa.
           </p>
           <div className="integration-detail">
-            <span>{s.mode === "demo" ? "Tryb analizy" : "Model"}</span>
-            <strong>
-              {s.mode === "demo" ? "Stałe dane demonstracyjne" : s.llm.model}
-            </strong>
+            <span>Model</span>
+            <strong>{s.llm.model}</strong>
           </div>
           <p className="integration-footnote">
-            {s.mode === "demo"
-              ? "Demo nie wykonuje połączeń z API modelu."
-              : "Brak klucza lub błąd AI kieruje sprawę do pełnego kontekstu."}
+            Brak klucza lub błąd AI kieruje sprawę do pełnego kontekstu.
           </p>
         </Card>
         <Card className="integration-card">
@@ -243,55 +219,6 @@ export default function IntegrationsPage({
         </div>
       </Card>
       {s.last_sync_error && <ErrorNotice message={s.last_sync_error} />}
-      {s.mode === "demo" && (
-        <Card className="demo-settings">
-          <div className="integration-icon icon-amber">
-            <FlaskConical size={24} />
-          </div>
-          <div>
-            <h2>Zacznij demonstrację od nowa</h2>
-            <p>
-              Przywróć cztery przykładowe sprawy i wyczyść wybory oraz drafty
-              demo.
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setReset(true)}>
-            <RotateCcw size={16} />
-            Zresetuj demo
-          </Button>
-        </Card>
-      )}
-      <Dialog open={reset} onOpenChange={setReset}>
-        <DialogContent>
-          <DialogTitle>Przywrócić przykładowe sprawy?</DialogTitle>
-          <DialogDescription>
-            Wybory i drafty z bieżącej symulacji zostaną usunięte. W kolejce
-            pojawią się cztery początkowe wiadomości demo.
-          </DialogDescription>
-          <div className="modal-actions">
-            <Button
-              variant="outline"
-              disabled={!!busy}
-              onClick={() => setReset(false)}
-            >
-              Anuluj
-            </Button>
-            <Button
-              disabled={!!busy}
-              onClick={() =>
-                void run("reset", async () => {
-                  await api.reset();
-                  setReset(false);
-                  setNotice("Demo gotowe do nowego przebiegu.");
-                })
-              }
-            >
-              {busy === "reset" && <LoaderCircle size={16} className="spin" />}
-              Przywróć demo
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.core.errors import DomainError
 from app.db.models import Decision, GmailConnection
 from app.schemas.decision import ChoiceIn, DecisionOut, DraftIn, PushIn, SendIn
-from app.services import demo, drafts
+from app.services import drafts
 
 router = APIRouter(prefix="/api")
 
@@ -27,12 +27,7 @@ def authorized(request: Request):
 
 def live_only(request):
     if request.app.state.settings.app_mode != "live":
-        raise DomainError("Ta integracja jest wyłączona w demo.", 400)
-
-
-def demo_only(request):
-    if request.app.state.settings.app_mode != "demo":
-        raise DomainError("Dane demo są dostępne tylko w trybie demo.", 400)
+        raise DomainError("Ta integracja jest wyłączona w trybie live.", 400)
 
 
 @router.get("/health")
@@ -78,7 +73,7 @@ def logout(request: Request):
 def status(request: Request, session=Depends(session_db)):
     state = request.app.state
     settings = state.settings
-    authenticated = settings.app_mode == "demo" or request.session.get("authenticated", False)
+    authenticated = settings.app_mode == "live" and request.session.get("authenticated", False)
     connection = session.get(GmailConnection, 1) if authenticated else None
     return {
         "mode": settings.app_mode,
@@ -101,30 +96,13 @@ def status(request: Request, session=Depends(session_db)):
 @router.get("/decisions", response_model=list[DecisionOut], dependencies=[Depends(authorized)])
 def list_decisions(request: Request, session=Depends(session_db)):
     return session.scalars(
-        select(Decision)
-        .where(
-            Decision.is_demo.is_(request.app.state.settings.app_mode == "demo"),
-            Decision.status != "skipped",
-        )
-        .order_by(Decision.received_at.desc())
+        select(Decision).where(Decision.status != "skipped").order_by(Decision.received_at.desc())
     ).all()
 
 
 @router.get("/decisions/{decision_id}", response_model=DecisionOut, dependencies=[Depends(authorized)])
 def detail(decision_id: str, request: Request, session=Depends(session_db)):
     return drafts.get_decision(session, decision_id, request.app.state.settings)
-
-
-@router.post("/demo/load", dependencies=[Depends(authorized)])
-def load_demo(request: Request, session=Depends(session_db)):
-    demo_only(request)
-    return {"created": demo.load_demo(session, request.app.state.ingestion)}
-
-
-@router.post("/demo/reset", dependencies=[Depends(authorized)])
-def reset_demo(request: Request, session=Depends(session_db)):
-    demo_only(request)
-    return {"created": demo.reset_demo(session, request.app.state.ingestion)}
 
 
 @router.post("/gmail/sync", dependencies=[Depends(authorized)])

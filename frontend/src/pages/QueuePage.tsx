@@ -32,9 +32,7 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
   const [error, setError] = useState("");
   const pending = decisions.filter((d) => d.status === "pending");
   const drafts = decisions.filter((d) => d.status === "draft_ready");
-  const done = decisions.filter((d) =>
-    ["sent", "demo_completed"].includes(d.status),
-  );
+  const done = decisions.filter((d) => ["sent"].includes(d.status));
   const visible =
     view === "history"
       ? done
@@ -83,11 +81,7 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
           disabled={busy || (status.mode === "live" && !status.gmail.connected)}
         >
           <RefreshCw size={16} className={busy ? "spin" : ""} />
-          {busy
-            ? "Odświeżanie…"
-            : status.mode === "demo"
-              ? "Odśwież kolejkę"
-              : "Synchronizuj Gmail"}
+          {busy ? "Odświeżanie…" : "Synchronizuj Gmail"}
         </Button>
       </div>
       {error && <ErrorNotice message={error} />}
@@ -126,9 +120,7 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
             <span>Zakończone sprawy</span>
             <strong>{done.length.toString().padStart(2, "0")}</strong>
           </div>
-          <span className="stat-caption">
-            {status.mode === "demo" ? "w symulacji" : "wysłane odpowiedzi"}
-          </span>
+          <span className="stat-caption">wysłane odpowiedzi</span>
         </Card>
       </div>
       <div className="queue-layout">
@@ -246,15 +238,13 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
           <div className="rail-bottom">
             <Clock3 size={15} />
             <span>
-              {status.mode === "demo"
-                ? "Przykładowe dane · gotowe do testów"
-                : status.last_sync_at
-                  ? "Ostatnia synchronizacja: " +
-                    new Date(status.last_sync_at).toLocaleTimeString("pl-PL", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : "Oczekiwanie na synchronizację"}
+              {status.last_sync_at
+                ? "Ostatnia synchronizacja: " +
+                  new Date(status.last_sync_at).toLocaleTimeString("pl-PL", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "Oczekiwanie na synchronizację"}
             </span>
           </div>
           {busy && <LoaderCircle className="spin" size={16} />}

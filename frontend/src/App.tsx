@@ -134,16 +134,8 @@ export default function App() {
               {status?.mode === "live" ? "JA" : "DE"}
             </div>
             <div>
-              <strong>
-                {status?.mode === "live"
-                  ? "Twoje konto"
-                  : "Przestrzeń demonstracyjna"}
-              </strong>
-              <span>
-                {status?.mode === "live"
-                  ? "Tryb Gmail"
-                  : "Bez prawdziwej wysyłki"}
-              </span>
+              <strong>Twoje konto</strong>
+              <span>Tryb live</span>
             </div>
             {status?.mode === "live" && status.authenticated && (
               <Button
@@ -183,14 +175,7 @@ export default function App() {
             </strong>
           </div>
           <div className="topbar-actions">
-            {status?.mode === "demo" ? (
-              <Badge className="badge-demo">
-                <span className="status-dot" />
-                Tryb demo
-              </Badge>
-            ) : (
-              status && <Badge className="badge-success">Tryb Gmail</Badge>
-            )}
+            {status && <Badge className="badge-success">Tryb live</Badge>}
             <Link
               className="notification-link"
               to="/integrations"
@@ -201,22 +186,6 @@ export default function App() {
           </div>
         </header>
         <main id="main" className="main-content">
-          {status?.mode === "demo" && (
-            <div className="demo-banner">
-              <div>
-                <span className="demo-dot" />
-                <strong>Bezpieczna przestrzeń do testów.</strong>
-                <span>
-                  {" "}
-                  Dane są przykładowe. Żaden e-mail nie zostanie wysłany.
-                </span>
-              </div>
-              <Link to="/integrations">
-                O trybie demo
-                <ArrowRightSmall />
-              </Link>
-            </div>
-          )}
           {error && (
             <ErrorNotice message={error} retry={() => void refresh()} />
           )}

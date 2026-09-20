@@ -20,4 +20,4 @@ def test_compose_and_env_match_local_defaults():
     for service in services.values():
         assert (root / service["build"] / "Dockerfile").exists()
     defaults = Settings(_env_file=root / ".env.example")
-    assert defaults.app_mode == "demo" and defaults.frontend_url == "http://localhost:5173"
+    assert defaults.app_mode == "live" and defaults.frontend_url == "http://localhost:5173"

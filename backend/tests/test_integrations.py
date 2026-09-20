@@ -8,10 +8,10 @@ from cryptography.fernet import Fernet
 from pywebpush import WebPushException
 from sqlalchemy import select
 
-from app.db.models import GmailConnection, PushSubscription
+from app.db.models import Decision, GmailConnection, PushSubscription
 from app.schemas.decision import PushIn
 from app.services.analyzer import LLMAnalyzer
-from app.services.demo import fixtures
+from app.services.fixtures import fixtures
 from app.services.gmail import GmailService
 
 
@@ -158,7 +158,7 @@ def test_gmail_fetch_skips_processed_and_paginates(client, settings):
     provider = Mock()
     messages = provider.users.return_value.messages.return_value
     messages.list.return_value.execute.side_effect = [
-        {"messages": [{"id": "demo-1"}, {"id": "real-1"}], "nextPageToken": "next"},
+        {"messages": [{"id": "mail-1"}, {"id": "real-1"}], "nextPageToken": "next"},
         {"messages": []},
     ]
     mail = EmailMessage()
@@ -174,6 +174,28 @@ def test_gmail_fetch_skips_processed_and_paginates(client, settings):
     }
     gmail.client = Mock(return_value=provider)
     with client.app.state.sessions() as session:
+        session.add(
+            Decision(
+                gmail_message_id="mail-1",
+                gmail_thread_id="thread-0",
+                sender_name="Seed",
+                sender_email="seed@example.com",
+                subject="Seed",
+                received_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+                original_body="seed",
+                summary="seed",
+                request_text="seed",
+                decision_type="other",
+                classification="pending",
+                status="pending",
+                confidence=1.0,
+                safety_reasons=[],
+                risk_flags=[],
+                conditions=[],
+                missing_fields=[],
+            )
+        )
+        session.commit()
         rows = list(gmail.fetch_messages(session))
     assert len(rows) == 1 and rows[0].gmail_message_id == "real-1"
     assert messages.get.call_count == 1 and messages.list.call_count == 2

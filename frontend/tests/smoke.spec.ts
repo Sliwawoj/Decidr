@@ -1,13 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.beforeEach(async ({ request }) => {
-  const response = await request.post("/api/demo/reset", {
-    headers: { "X-Decidr-Client": "web" },
-  });
-  expect(response.ok()).toBeTruthy();
-});
-
-test("approve, edit, preview, cancel, confirm and persist demo", async ({
+test("queue and decision flow work in live mode", async ({
   page,
 }, testInfo) => {
   const errors: string[] = [];
@@ -16,7 +9,7 @@ test("approve, edit, preview, cancel, confirm and persist demo", async ({
   await expect(
     page.getByRole("heading", { name: "Twoje decyzje", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Tryb demo", { exact: true })).toBeVisible();
+  await expect(page.getByText("Tryb live", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Pełny kontekst" })).toHaveCount(
     0,
   );
@@ -45,10 +38,10 @@ test("approve, edit, preview, cancel, confirm and persist demo", async ({
   await page.getByRole("button", { name: "Wróć do edycji" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "Przejdź do potwierdzenia" }).click();
-  await page.getByRole("button", { name: "Potwierdzam symulację" }).click();
+  await page.getByRole("button", { name: "Potwierdzam wysyłkę" }).click();
   await expect(
     page.getByRole("heading", {
-      name: "Symulacja zakończona. Nic nie wysłaliśmy.",
+      name: "Odpowiedź została wysłana.",
     }),
   ).toBeVisible();
   await page.reload();
@@ -91,7 +84,7 @@ test("high-stakes matter stays actionable with warning, reject creates a draft",
   ).toBeVisible();
 });
 
-test("integration status and reset work without secrets", async ({ page }) => {
+test("integration status is visible without secrets", async ({ page }) => {
   await page.goto("/integrations");
   await expect(
     page.getByRole("button", { name: "Połącz konto Gmail" }),
@@ -99,13 +92,6 @@ test("integration status and reset work without secrets", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Włącz na tym urządzeniu" }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Zresetuj demo" }).click();
-  await page
-    .getByRole("button", { name: "Przywróć demo", exact: true })
-    .click();
-  await expect(
-    page.getByText("Demo gotowe do nowego przebiegu."),
-  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

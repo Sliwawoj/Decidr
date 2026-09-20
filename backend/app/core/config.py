@@ -8,11 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=("../.env", ".env"), extra="ignore")
 
-    app_mode: Literal["demo", "live"] = "demo"
+    app_mode: Literal["live"] = "live"
     database_url: str = "sqlite:///./data/decidr.db"
     frontend_url: str = "http://localhost:5173"
     app_password: str = ""
-    session_secret: str = "demo-only-change-before-live-use"
+    session_secret: str = "replace-this-secret-before-production"
     cookie_secure: bool = False
     token_encryption_key: str = ""
     gemini_api_key: str = ""
@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@example.com"
     scheduler_enabled: bool = True
-    demo_autoload: bool = True
 
     @model_validator(mode="after")
     def validate_live(self):

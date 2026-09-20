@@ -41,7 +41,6 @@ class Decision(Base):
     status: Mapped[str] = mapped_column(String, default="analyzed", index=True)
     user_choice: Mapped[str | None] = mapped_column(String, nullable=True)
     draft: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

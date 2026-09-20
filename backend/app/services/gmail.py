@@ -198,7 +198,7 @@ class GmailService:
 
     def client(self, session):
         if self.settings.app_mode != "live":
-            raise DomainError("Gmail jest wyłączony w demo.", 403)
+            raise DomainError("Gmail jest wyłączony w trybie live.", 403)
         record = session.get(GmailConnection, 1)
         if not record:
             raise DomainError("Najpierw połącz konto Gmail.", 503)

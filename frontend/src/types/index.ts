@@ -20,16 +20,9 @@ export interface Decision {
   safety_reasons: string[];
   confidence: number;
   classification: "needs_reply" | "needs_review" | "skip";
-  status:
-    | "analyzed"
-    | "pending"
-    | "skipped"
-    | "draft_ready"
-    | "sent"
-    | "demo_completed";
+  status: "analyzed" | "pending" | "skipped" | "draft_ready" | "sent";
   user_choice: "approve" | "reject" | null;
   draft: string | null;
-  is_demo: boolean;
   created_at: string;
   updated_at: string;
   sent_at: string | null;
@@ -38,7 +31,7 @@ export interface Decision {
   version: number;
 }
 export interface AppStatus {
-  mode: "demo" | "live";
+  mode: "live";
   authenticated: boolean;
   gmail: { configured: boolean; connected: boolean; email: string | null };
   llm: { configured: boolean; model: string };
