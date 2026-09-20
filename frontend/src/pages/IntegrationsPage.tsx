@@ -5,21 +5,13 @@ import {
   BrainCircuit,
   Check,
   ExternalLink,
-  FlaskConical,
   LoaderCircle,
   Mail,
-  RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ErrorNotice } from "@/components/common";
 import { api } from "@/services/api";
 import { subscribeToPush } from "@/services/push";
@@ -35,7 +27,6 @@ export default function IntegrationsPage({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [reset, setReset] = useState(false);
   const [params] = useSearchParams();
   async function run(name: string, fn: () => Promise<void>) {
     setBusy(name);

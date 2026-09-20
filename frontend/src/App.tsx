@@ -254,9 +254,6 @@ export default function App() {
     </div>
   );
 }
-function ArrowRightSmall() {
-  return <ChevronRight size={15} />;
-}
 function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
