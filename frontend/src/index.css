@@ -1414,6 +1414,17 @@ svg {
   color: #4a6c8b;
   font-weight: 600;
 }
+.signature-card {
+  width: 100%;
+  margin-top: 24px;
+}
+.signature-card .draft-actions {
+  margin-top: 1rem;
+}
+.signature-input {
+  margin-top: 0.5rem;
+  min-height: 6rem;
+}
 .demo-settings {
   display: flex;
   gap: 20px;
@@ -1825,7 +1836,7 @@ svg {
   }
 }
 
-/* �� Industrial workspace (mobile-first) �� */
+/* ï¿½ï¿½ Industrial workspace (mobile-first) ï¿½ï¿½ */
 .workspace {
   display: flex;
   flex-direction: column;

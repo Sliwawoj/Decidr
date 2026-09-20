@@ -70,4 +70,8 @@ export const api = {
   oauth: () => request<{ url: string }>("/oauth/gmail/start", "POST"),
   disconnectGmail: () =>
     request<{ connected: boolean }>("/gmail/connection", "DELETE"),
+  saveSettings: (emailSignature: string) =>
+    request<{ email_signature: string }>("/settings", "PATCH", {
+      email_signature: emailSignature,
+    }),
 };

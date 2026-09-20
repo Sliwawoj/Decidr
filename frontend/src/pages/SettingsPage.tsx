@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   LogOut,
   Mail,
+  PenLine,
   RotateCcw,
   Unplug,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { ErrorNotice } from "@/components/common";
 import { api, request } from "@/services/api";
 import {
@@ -43,8 +45,13 @@ export default function SettingsPage({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [reset, setReset] = useState(false);
+  const [signature, setSignature] = useState(s.email_signature);
   const [pushOn, setPushOn] = useState(false);
   const [params] = useSearchParams();
+
+  useEffect(() => {
+    setSignature(s.email_signature);
+  }, [s.email_signature]);
 
   useEffect(() => {
     void isPushSubscribed().then(setPushOn);
@@ -72,7 +79,7 @@ export default function SettingsPage({
         <div>
           <div className="section-eyebrow">KONTO I POŁĄCZENIA</div>
           <h1>Ustawienia</h1>
-          <p>Powiadomienia i połączenie z Gmailem.</p>
+          <p>Powiadomienia, Gmail i podpis w odpowiedziach.</p>
         </div>
       </div>
       {error && <ErrorNotice message={error} />}
@@ -258,6 +265,43 @@ export default function SettingsPage({
           </p>
         </Card>
       </div>
+      <Card className="integration-card signature-card">
+        <div className="integration-top">
+          <div className="integration-icon icon-green">
+            <PenLine size={24} />
+          </div>
+          <Badge className="badge-neutral">Podpis maila</Badge>
+        </div>
+        <h2>Podpis w odpowiedziach</h2>
+        <p>Dodawany jest na końcu każdej przygotowanej odpowiedzi.</p>
+        <Textarea
+          value={signature}
+          onChange={(event) => setSignature(event.target.value)}
+          rows={4}
+          className="signature-input"
+          maxLength={1000}
+        />
+        <div className="draft-actions">
+          <Button
+            variant="outline"
+            disabled={busy === "signature" || signature === s.email_signature}
+            onClick={() =>
+              void run("signature", async () => {
+                const saved = await api.saveSettings(signature);
+                setSignature(saved.email_signature);
+                setNotice("Podpis został zapisany.");
+              })
+            }
+          >
+            {busy === "signature" ? (
+              <LoaderCircle size={16} className="spin" />
+            ) : (
+              <Check size={16} />
+            )}
+            Zapisz podpis
+          </Button>
+        </div>
+      </Card>
       {s.mode === "live" && s.authenticated && (
         <Card className="demo-settings">
           <div className="integration-icon icon-blue">

@@ -27,6 +27,30 @@ def test_normalize_draft_newlines_unescapes_literal_backslash_n():
     assert _normalize_draft_newlines(mixed) == mixed
 
 
+def test_strip_llm_closing_removes_farewell_and_name_placeholder():
+    from app.services.drafts import append_signature, strip_llm_closing
+    from types import SimpleNamespace
+
+    raw = (
+        "Cześć Tomasz,\n\n"
+        "Dzięki za podsumowanie. W kwestii uruchomienia nowego systemu CRM, "
+        "proszę o kontynuowanie prac zgodnie z opcją: [WPISZ SWOJĄ DECYZJĘ].\n\n"
+        "Pozdrawiam,\n"
+        "[Twoje imię]"
+    )
+    stripped = strip_llm_closing(raw)
+    assert stripped.endswith("[WPISZ SWOJĄ DECYZJĘ].")
+    assert "Pozdrawiam" not in stripped
+    assert "[Twoje imię]" not in stripped
+
+    settings = SimpleNamespace(email_signature="Z poważaniem,\nRyba z Łodzi")
+    drafted = append_signature(raw, settings)
+    assert drafted.count("Z poważaniem") == 1
+    assert drafted.endswith("Ryba z Łodzi")
+    assert "Pozdrawiam" not in drafted
+    assert "[Twoje imię]" not in drafted
+
+
 def test_suggest_draft_unescapes_literal_newlines(settings):
     from app.services.analyzer import ReplyDraft
 
@@ -115,8 +139,10 @@ def test_needs_review_adds_open_draft_llm_call(settings):
         ]
         result = analyzer.analyze(message)
         assert result.classification == "needs_review"
-        assert result.draft == draft_text
+        assert "Pozdrawiam" not in result.draft
+        assert result.draft.endswith("Z poważaniem")
         assert DECISION_PLACEHOLDER in result.draft
+        assert "Dziękuję za przygotowanie materiałów." in result.draft
         assert client.models.generate_content.call_count == 3
         review_call = client.models.generate_content.call_args_list[2]
         assert review_call.kwargs["config"].response_schema.__name__ == "ReplyDraft"

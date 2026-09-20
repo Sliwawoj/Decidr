@@ -47,6 +47,10 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=512)
 
 
+class SettingsIn(BaseModel):
+    email_signature: str = Field(default="Z poważaniem", max_length=1000)
+
+
 @router.post("/session")
 def login(data: LoginIn, request: Request):
     settings = request.app.state.settings
@@ -96,9 +100,16 @@ def status(request: Request, session=Depends(session_db)):
             "configured": settings.push_configured,
             "public_key": settings.vapid_public_key if settings.push_configured else None,
         },
+        "email_signature": settings.email_signature,
         "last_sync_at": state.ingestion.last_sync_at if authenticated else None,
         "last_sync_error": state.ingestion.last_sync_error if authenticated else None,
     }
+
+
+@router.patch("/settings", dependencies=[Depends(authorized)])
+def update_settings(data: SettingsIn, request: Request):
+    request.app.state.settings.email_signature = data.email_signature.strip() or "Z poważaniem"
+    return {"email_signature": request.app.state.settings.email_signature}
 
 
 @router.get("/decisions", response_model=list[DecisionOut], dependencies=[Depends(authorized)])
@@ -141,7 +152,12 @@ def sync_gmail(request: Request):
 def choose(decision_id: str, data: ChoiceIn, request: Request, session=Depends(session_db)):
     decision = drafts.get_decision(session, decision_id, request.app.state.settings)
     return drafts.choose(
-        session, decision, data.choice, data.version, analyzer=request.app.state.ingestion.analyzer
+        session,
+        decision,
+        data.choice,
+        data.version,
+        analyzer=request.app.state.ingestion.analyzer,
+        settings=request.app.state.settings,
     )
 
 

@@ -8,7 +8,7 @@ const streams: {
   short: string;
 }[] = [
   { id: "quick", label: "Szybkie (Tak/Nie)", short: "Szybkie" },
-  { id: "complete", label: "Wybór / Uzupełnij", short: "Wybór" },
+  { id: "complete", label: "Uzupełnij", short: "Uzupełnij" },
 ];
 
 export function StreamToggle({

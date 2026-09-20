@@ -1,53 +1,140 @@
 # Decidr
 
-Spokojne miejsce na proste decyzje operacyjne z maila. MVP na hackathon: **React + Vite + TypeScript + Tailwind + shadcn/ui**, **FastAPI + Pydantic + SQLAlchemy + SQLite**.
+Decidr to lokalna aplikacja, która wyciąga z Gmaila proste decyzje operacyjne, układa je w kolejkę i przygotowuje odpowiedź. **Człowiek zawsze zatwierdza treść i osobno potwierdza wysyłkę** — Decidr nie wysyła maili samodzielnie.
 
-Decidr przygotowuje kartę i odpowiedź. Użytkownik podejmuje decyzję, edytuje draft i **osobno potwierdza** ostatni krok. Ważne sprawy dostają ostrzeżenie, ale zostają w jednej kolejce szybkiej odpowiedzi.
+Stack: **React + Vite + TypeScript + Tailwind**, **FastAPI + SQLite**. Jedna skrzynka, jeden użytkownik na bazę. Bez mikroserwisów, Redisa i Celery.
 
-## Demo — jedno polecenie
+---
 
-Wymagania: Docker Engine/Desktop i Docker Compose **2.24+** (obsługa opcjonalnego pliku env).
+## Dla kogo to jest
+
+Firma lub osoba, która:
+
+- dostaje maile typu „czy możemy?”, „potwierdź”, „wybierz opcję”,
+- chce szybciej przechodzić proste zgody / odmowy,
+- nadal chce **czytać i zatwierdzać** treść odpowiedzi przed wysłaniem.
+
+Nie jest to pełny helpdesk, CRM ani automat odpowiadający za Ciebie.
+
+---
+
+## Jak działa (w skrócie)
+
+```text
+Gmail (inbox) → synchronizacja → Gemini (czy to decyzja?) → karta w kolejce
+→ Ty wybierasz / edytujesz draft → potwierdzasz wysyłkę → odpowiedź wraca do wątku
+```
+
+| Typ sprawy | Co widzisz |
+| --- | --- |
+| **needs_reply** | Prosta zgoda / odmowa → draft po wyborze |
+| **needs_review** | Otwarty draft z miejscem na decyzję (`[WPISZ SWOJĄ DECYZJĘ]`) |
+| **skip** | Mail bez decyzji — ukryty w kolejce |
+
+Dodatkowo możesz **odrzucić sprawę z kolejki bez odpowiedzi** (dismiss) albo ustawić **podpis maila** w Ustawieniach.
+
+---
+
+## Szybki start — demo (bez kont i kluczy)
+
+Wymagania: **Docker Desktop / Engine** i Compose **2.24+**.
 
 ```sh
 docker compose up --build
 ```
 
-Otwórz **http://localhost:5173**. Pierwszy start automatycznie tworzy cztery przykładowe sprawy. Nie trzeba tworzyć `.env`, łączyć Gmaila ani podawać klucza LLM/VAPID.
+Otwórz **http://localhost:5173**.
 
-- Frontend: Nginx na porcie 5173, API przez ten sam origin pod `/api`.
-- Backend: jeden proces FastAPI, port 8000 dostępny tylko wewnątrz sieci Compose.
-- Baza: trwały wolumen `decidr-data`. Restart nie kasuje wyborów.
-- Kontenery uruchamiają się w kolejności backend health check → frontend.
-- Port aplikacji domyślnie nasłuchuje tylko na localhost.
-- Zatrzymanie: `docker compose down`.
-- Reset przykładowych spraw: **Integracje → Zresetuj demo**. Usuwa wyłącznie dane demo.
+- Nie trzeba `.env`, Gmaila ani Gemini.
+- Pojawiają się przykładowe sprawy (symulacja — nic nie wychodzi na zewnątrz).
+- Reset demo: **Ustawienia → Zresetuj demo**.
+- Zatrzymanie: `docker compose down` (dane w wolumenie `decidr-data` zostają).
 
-**Demo nigdy nie wywołuje Gmail API ani API modelu.** Wyniki ekstrakcji są oznaczonymi danymi demonstracyjnymi, ale przechodzą ten sam deterministyczny Safety Policy co dane rzeczywiste. Ostatni krok ustawia `demo_completed`, pozostawiając `sent_at = null`. Push może opcjonalnie działać również w demo, jeżeli samodzielnie skonfigurujesz VAPID.
+### Pierwszy przebieg (2–3 min)
 
-## Scenariusz prezentacji (2–3 minuty)
+1. Wejdź w kolejkę — kilka przykładowych spraw.
+2. Otwórz sprawę, kliknij **Zezwól** (lub **Odrzuć**) — powstaje draft.
+3. Edytuj treść → **Przejdź do potwierdzenia** → sprawdź podgląd.
+4. **Potwierdzam symulację** — sprawa trafia do historii; `sent_at` pozostaje puste.
+5. Sprawdź też sprawę „ciężką” (wysoka kwota) — decyzja nadal jest Twoja.
 
-1. Pokaż kolejkę: cztery przykładowe sprawy do działania. Widoczny bursztynowy pasek oznacza demo.
-2. Otwórz **Materiały do warsztatu z klientem**: znana nadawczyni, 249 PLN, termin i warunki.
-3. Kliknij **Zezwól**. Powstaje draft; nic nie jest wysyłane.
-4. Edytuj odpowiedź. Kliknij **Przejdź do potwierdzenia** — edycja zostanie zapisana.
-5. Sprawdź odbiorcę, temat i treść. Możesz wrócić do edycji.
-6. Kliknij **Potwierdzam symulację**. Komunikat: „Symulacja zakończona. Nic nie wysłaliśmy.” Sprawa jest w historii.
-7. Otwórz umowę za 85 000 PLN — też jest w kolejce do działania; Ty decydujesz.
-8. W drugiej sprawie możesz pokazać ścieżkę **Odrzuć**. Integracje pozwalają zresetować demo.
+---
 
-## Uruchamianie bez Dockera
+## Wdrożenie na żywo (nowa firma / skrzynka)
 
-Python 3.12+, Node.js 22+ i npm. Poniżej polecenia PowerShell, uruchamiane w katalogu repozytorium:
+Poniżej ścieżka od zera do działającej kolejki na prawdziwym Gmailu.
+
+### 1. Co przygotować
+
+| Potrzeba | Po co |
+| --- | --- |
+| Serwer lub komputer z Dockerem (albo Python 3.12+ i Node 22+) | Host aplikacji |
+| Konto Google Cloud | Gmail API + OAuth |
+| Klucz **Gemini API** | Klasyfikacja maili i drafty |
+| Dedykowana skrzynka testowa (zalecane na start) | Bezpieczne próby |
+| (Opcjonalnie) domena / HTTPS / ngrok | Dostęp spoza localhost |
+| (Opcjonalnie) klucze VAPID | Powiadomienia w przeglądarce |
+
+### 2. Skopiuj konfigurację
+
+```sh
+cp .env.example .env
+```
+
+Wygeneruj sekrety (z katalogu repozytorium, z venv lub lokalnym Pythonem):
+
+```powershell
+python scripts/generate_secrets.py
+python scripts/generate_vapid.py   # tylko jeśli chcesz Web Push
+```
+
+Wklej wynik do `.env` i ustaw:
+
+```env
+APP_MODE=live
+APP_PASSWORD=................        # min. 12 znaków — logowanie do aplikacji
+SESSION_SECRET=................      # min. 32 znaki
+TOKEN_ENCRYPTION_KEY=................ # klucz Fernet (z generate_secrets)
+FRONTEND_URL=http://localhost:5173
+GOOGLE_REDIRECT_URI=http://localhost:5173/api/oauth/gmail/callback
+COOKIE_SECURE=false                  # true dopiero przy HTTPS
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash-lite
+EMAIL_SIGNATURE="Z poważaniem,\nImię Nazwisko"
+```
+
+Bez `APP_MODE=live` i wymaganych sekretów backend **nie wystartuje** w trybie produkcyjnym.
+
+### 3. Google Cloud — Gmail OAuth
+
+1. Utwórz projekt w [Google Cloud Console](https://console.cloud.google.com/).
+2. Włącz **Gmail API**.
+3. Skonfiguruj ekran zgody OAuth (tryb testowy + użytkownik testowy = Twoja skrzynka).
+4. Utwórz klienta OAuth typu **Web application**.
+5. Dodaj **dokładnie** ten Authorized redirect URI (musi być zgodny z `GOOGLE_REDIRECT_URI`):
+
+   `http://localhost:5173/api/oauth/gmail/callback`
+
+6. Skopiuj Client ID i Client Secret do `.env` jako `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+
+Zakresy używane przez Decidr: `gmail.readonly` + `gmail.send` (bez `gmail.modify` — aplikacja nie oznacza maili jako przeczytane i nie rusza etykiet).
+
+### 4. Uruchomienie
+
+**Docker (zalecane):**
+
+```sh
+docker compose up --build
+```
+
+**Bez Dockera (PowerShell):**
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
-.\.venv\Scripts\python.exe -m pip install -e "./backend" --group backend/pyproject.toml:dev
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 ```
-
-Jeżeli pip nie obsługuje `--group`, zainstaluj narzędzia testowe: `python -m pip install pytest httpx ruff pyyaml`. Alternatywnie użyj `uv pip install --python .venv/Scripts/python.exe -e ./backend --group backend/pyproject.toml:dev`.
 
 Drugi terminal:
 
@@ -57,129 +144,153 @@ npm ci
 npm run dev
 ```
 
-Otwórz **http://localhost:5173**, również gdy Vite wyświetla adres 127.0.0.1. `FRONTEND_URL` oraz adres w przeglądarce muszą być zgodne, bo API sprawdza Origin przy zapisie.
+Wejdź na **http://localhost:5173** (ten sam host co w `FRONTEND_URL` — API sprawdza Origin).
 
-Na Linux/macOS użyj `.venv/bin/python` zamiast `.venv/Scripts/python.exe`. Zależności backendu są przypięte w `requirements.txt`, frontendu w `package-lock.json`.
+### 5. Pierwsze logowanie i połączenie skrzynki
 
-## Opcjonalny tryb Gmail
+1. Zaloguj się hasłem `APP_PASSWORD`.
+2. **Ustawienia → Połącz konto Gmail** → przejdź przez Google OAuth.
+3. Ustaw podpis w **Podpis w odpowiedziach** (albo zostaw `EMAIL_SIGNATURE` z `.env`).
+4. Poczekaj na automatyczną synchronizację (domyślnie co **30 s**) albo użyj synchronizacji ręcznej, jeśli jest dostępna w UI.
+5. Nowe maile od momentu połączenia trafiają do analizy; **historia skrzynki sprzed połączenia nie jest dociągana**.
 
-To konfiguracja aplikacji, nie wtyczka Gmail do Codex. Nie wpisuj sekretów do kodu ani repozytorium.
+### 6. Codzienny przepływ użytkownika
 
-1. Skopiuj `.env.example` do `.env`.
-2. Wygeneruj własne wartości: `.venv/Scripts/python.exe scripts/generate_secrets.py`. Skopiuj wynik do `.env`:
-   - `APP_PASSWORD`: hasło do aplikacji (co najmniej 12 znaków),
-   - `SESSION_SECRET`: sekret podpisujący sesję (co najmniej 32 znaki),
-   - `TOKEN_ENCRYPTION_KEY`: klucz Fernet szyfrujący tokeny OAuth w SQLite.
-3. Ustaw `APP_MODE=live`. Bez wymaganych sekretów backend odmawia startu.
-4. W Google Cloud włącz Gmail API. Skonfiguruj ekran zgody OAuth i użytkownika testowego. Utwórz klienta **Web application**.
-5. Dodaj dokładny redirect URI: `http://localhost:5173/api/oauth/gmail/callback`.
-6. Uzupełnij `GOOGLE_CLIENT_ID` i `GOOGLE_CLIENT_SECRET`.
-7. Uzupełnij `GEMINI_API_KEY` (i opcjonalnie `GEMINI_MODEL`).
-8. Uruchom ponownie backend/Compose. Zaloguj się hasłem aplikacji i w **Integracje** wybierz **Połącz konto Gmail**.
-9. Użyj **Synchronizuj Gmail**. APScheduler wykonuje synchronizację również co 120 sekund.
+1. W kolejce pojawia się karta (nadawca, skrót, kwota/termin gdy wykryte).
+2. **Zezwól / Odrzuć** albo edytuj draft w sprawach `needs_review`.
+3. Sprawdź treść → potwierdź wysyłkę.
+4. Odpowiedź ląduje w oryginalnym wątku Gmail.
+5. Niepotrzebną sprawę możesz usunąć z kolejki bez odpowiedzi.
 
-Zakresy OAuth: `gmail.readonly` i `gmail.send`. Nie żądamy `gmail.modify`: aplikacja nie zmienia flag przeczytania ani etykiet wiadomości. Zapis unikalnego Gmail message ID w bazie po analizie jest punktem oznaczenia sprawy jako przetworzonej.
+Po restarcie aplikacji podpis zapisany w UI wraca do wartości z `EMAIL_SIGNATURE` / domyślnej — trwały zapis to na razie ustawienie procesowe.
 
-Synchronizacja pobiera MIME `format=raw`, preferuje `text/plain`, dekoduje znaki, a HTML sprowadza do tekstu. Załączniki nie są analizowane i kierują sprawę do pełnego kontekstu. Warunkiem uproszczenia wiadomości Gmail jest także pozytywny wynik DMARC dla domeny From w nagłówku Authentication-Results wystawionym przez Gmail. To kontrola domeny, nie gwarancja tożsamości konkretnej osoby.
+---
 
-Odpowiedź używa `threadId`, `In-Reply-To`, `References` i zgodnego tematu. Stan OAuth ma 10-minutową ważność, jest jednorazowy i używa PKCE. Tokeny są przechowywane zaszyfrowane; jedna baza obsługuje jedną skrzynkę. Nie zmieniaj klucza szyfrowania bez ponownej autoryzacji konta.
+## Dostęp spoza localhost (HTTPS / telefon / demo zdalne)
 
-W trybie live każdy nowy mail idzie najpierw do Gemini (czy potrzebna decyzja). Odrzucone wiadomości są pomijane (`skipped`). Przy `needs_decision` drugie wywołanie buduje kartę i krótki `push_text` do powiadomienia.
+Na samym `http://localhost` OAuth i push na telefonie nie wystarczą. Opcje:
 
-Jeśli wystawiasz aplikację poza localhost, skonfiguruj HTTPS, poprawny `FRONTEND_URL`, redirect URI i `COOKIE_SECURE=true`. Do demonstracji używaj dedykowanej skrzynki testowej.
+1. Własny reverse proxy z HTTPS, poprawne:
+   - `FRONTEND_URL=https://twoja-domena`
+   - `GOOGLE_REDIRECT_URI=https://twoja-domena/api/oauth/gmail/callback`
+   - ten sam URI w Google Cloud
+   - `COOKIE_SECURE=true`
+2. Albo szybki tunel (Windows): przy działającym Compose uruchom:
 
-## Web Push
+   ```powershell
+   .\scripts\ngrok-tunnel.ps1
+   ```
 
-1. Wygeneruj parę VAPID: `.venv/Scripts/python.exe scripts/generate_vapid.py`.
-2. Skopiuj `VAPID_PUBLIC_KEY` i `VAPID_PRIVATE_KEY` do `.env`, ustaw prawdziwy kontakt `VAPID_SUBJECT=mailto:...` i zrestartuj backend.
-3. W przeglądarce wybierz **Integracje → Włącz na tym urządzeniu**.
-4. Nowa mikrodecyzja wywołuje Web Push po trwałym zapisie. W demo: po subskrypcji zresetuj przykładowe sprawy.
+   Skrypt wystawia HTTPS na port 5173 i aktualizuje `.env` / backend. W Google Cloud dodaj **nowy** redirect URI z adresem ngrok.
 
-Wymagany jest HTTPS lub localhost oraz przeglądarka obsługująca Service Worker i Push API. Niektóre przeglądarki mobilne wymagają instalacji witryny na ekranie głównym. Odmowa zgody i błędy push nie wpływają na działanie kolejki. Subskrypcje 404/410 są usuwane. Notification click otwiera Kartę Decyzji. Powiadomienia nie zawierają treści wiadomości ani danych nadawcy. Service Worker nie zapisuje maili i draftów w cache.
+---
 
-## Architektura i pliki do review
+## Web Push (opcjonalnie)
 
-Modularny monolit, jedna baza, jeden proces backendu. Bez Celery, Redisa i mikroserwisów.
+1. `python scripts/generate_vapid.py` → `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:admin@firma.pl`.
+2. Restart backendu / Compose.
+3. **Ustawienia → Włącz na tym urządzeniu** (HTTPS lub localhost; czasem wymagana instalacja PWA).
 
-| Plik | Odpowiedzialność |
+Powiadomienie sygnalizuje nową sprawę — **bez treści maila i bez danych nadawcy**. Odmowa zgody nie blokuje kolejki.
+
+---
+
+## Zmienne środowiskowe
+
+| Zmienna | Opis |
 | --- | --- |
-| `backend/app/services/analyzer.py` | Dwuetapowe Gemini: gate + extract/`push_text` |
-| `backend/app/services/ingestion.py` | Analiza → zapis → push |
-| `backend/app/services/drafts.py` | Wybór, edycja, kontrola wersji, potwierdzenie, symulacja i atomowe rozpoczęcie wysyłki |
-| `backend/app/services/gmail.py` | OAuth, szyfrowane tokeny, MIME, pobieranie i odpowiedź w wątku |
-| `backend/app/services/analyzer.py` | Dwuetapowe Gemini: gate + extract/`push_text` |
-| `backend/app/services/push.py` | Subskrypcje, VAPID i niezależna od kolejki obsługa błędów |
-| `backend/app/db/models.py` | Decyzje, subskrypcje i połączenie Gmail |
-| `backend/app/api/routes.py` | Cienkie endpointy i sesja |
-| `backend/app/scheduler.py` | APScheduler, jeden job, brak nakładających się uruchomień |
-| `frontend/src/pages/DecisionPage.tsx` | Wybór → edycja → utrwalony podgląd → jawne potwierdzenie |
-| `frontend/src/components/ui/` | Lokalne komponenty shadcn/ui z Radix i własnym stylem |
-| `frontend/public/sw.js` | Powiadomienia bez cache wiadomości |
-| `backend/tests/`, `frontend/tests/demo.spec.ts` | Reguły, API, integracje z podstawionymi usługami i demo w przeglądarce |
+| `APP_MODE` | `demo` (domyślnie) lub `live` |
+| `APP_PASSWORD` / `SESSION_SECRET` / `TOKEN_ENCRYPTION_KEY` | Wymagane w `live` |
+| `FRONTEND_URL` | Origin aplikacji w przeglądarce |
+| `GOOGLE_*` | OAuth Gmail |
+| `GOOGLE_REDIRECT_URI` | Callback OAuth (musi = Google Console) |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | Analiza i drafty |
+| `GMAIL_QUERY` | Filtr skrzynki (domyślnie `in:inbox -from:me`) |
+| `SYNC_INTERVAL_SECONDS` | Interwał schedulera (domyślnie `30`) |
+| `EMAIL_SIGNATURE` | Podpis doklejany do draftów |
+| `VAPID_*` | Web Push |
+| `COOKIE_SECURE` | `true` przy HTTPS |
+| `DEMO_AUTOLOAD` | Autoload przykładowych spraw w demo |
+| `DATABASE_URL` | SQLite (w Compose: wolumen `/app/data`) |
 
-Przejścia: `analyzed → pending → draft_ready → sent`; pominięte maile: `skipped` (ukryte w API); w demo `draft_ready → demo_completed`. Stan analizowany nie jest publikowany przed zakończeniem filtra.
+Szablon: [`.env.example`](.env.example). **Nie commituj `.env`.**
 
-Filtr MVP: pierwsze wywołanie Gemini decyduje o skip/queue. Drugie buduje kartę i krótki tekst powiadomienia. Ostrzeżenia pochodzą z modelu (`warnings` / `risk_flags`). Finalną treść zatwierdza człowiek.
+---
 
-Każda mutacja wymaga nagłówka `X-Decidr-Client: web`, a przy obecnym Origin jest sprawdzane jego dopasowanie. Tryb live dodatkowo wymaga sesji z ciasteczkiem HttpOnly/SameSite. Hasło ma prosty limit nieudanych prób. Endpoint `/send` wymaga prawdziwego JSON boolean `confirmed: true` i aktualnej `version`, więc zmiana draftu w innej karcie unieważnia stary podgląd.
+## Architektura (dla IT)
 
-Przed połączeniem z Gmail zapisywany jest atomowy `send_attempted_at`. Timeout może oznaczać, że Gmail przyjął wiadomość. Nie wykonujemy automatycznej ponownej wysyłki; interfejs wskazuje konieczność sprawdzenia wątku. Zapobiega to duplikatom kosztem ręcznej obsługi niepewnych rezultatów.
+Modularny monolit, jeden proces, jedna baza SQLite.
 
-## API
+| Obszar | Pliki |
+| --- | --- |
+| Gate + extract + draft (Gemini) | `backend/app/services/analyzer.py` |
+| Sync → analiza → push | `backend/app/services/ingestion.py` |
+| Wybór, dismiss, podpis, wysyłka | `backend/app/services/drafts.py` |
+| OAuth / MIME / reply | `backend/app/services/gmail.py` |
+| VAPID | `backend/app/services/push.py` |
+| API | `backend/app/api/routes.py` |
+| Scheduler | `backend/app/scheduler.py` |
+| UI kolejki / ustawień | `frontend/src/pages/` |
 
-`GET /api/health`, `GET /api/status`, `POST|DELETE /api/session`, `GET /api/decisions`, `GET /api/decisions/{id}`, `POST /api/demo/load`, `POST /api/demo/reset`, `POST /api/gmail/sync`, `POST /api/decisions/{id}/choice`, `PATCH /api/decisions/{id}/draft`, `POST /api/decisions/{id}/send`, `POST /api/push/subscriptions`, `POST /api/oauth/gmail/start`, `GET /api/oauth/gmail/callback`.
+**Stany decyzji:** `pending` → `draft_ready` → `sent` (w demo: `demo_completed`). Pominięte: `skipped`. Usunięte z kolejki bez maila: `dismissed`.
 
-Przykładowe body:
+Bezpieczeństwo MVP:
 
-```json
-{ "choice": "approve", "version": 1 }
-```
-```json
-{ "draft": "Dziękuję, potwierdzam.", "version": 2 }
-```
-```json
-{ "confirmed": true, "version": 3 }
-```
+- mutacje wymagają nagłówka `X-Decidr-Client: web` i zgodnego Origin,
+- w `live` sesja HttpOnly + hasło z limitem prób,
+- `/send` wymaga `confirmed: true` i aktualnej `version`,
+- przed wysyłką zapisywane jest `send_attempted_at` — przy timeoucie **nie ma auto-retry** (sprawdź wątek w Gmail).
 
-## Testy
+---
 
-Backend, z folderu `backend`:
+## API (skrót)
+
+`GET /api/health`, `GET /api/status`, `POST|DELETE /api/session`, `PATCH /api/settings`,  
+`GET /api/decisions`, `GET /api/decisions/{id}`,  
+`POST /api/decisions/{id}/choice`, `POST /api/decisions/{id}/dismiss`,  
+`PATCH /api/decisions/{id}/draft`, `POST /api/decisions/{id}/send`,  
+`POST /api/gmail/sync`, `DELETE /api/gmail/connection`,  
+`POST|DELETE /api/push/subscriptions`,  
+`POST /api/oauth/gmail/start`, `GET /api/oauth/gmail/callback`,  
+`POST /api/demo/load`, `POST /api/demo/reset`.
+
+---
+
+## Testy (dla deweloperów)
 
 ```powershell
+# backend
+cd backend
 ..\.venv\Scripts\python.exe -m pytest -q
-..\.venv\Scripts\ruff.exe check app tests
-```
 
-Frontend, z folderu `frontend`:
-
-```sh
+# frontend
+cd frontend
 npm ci
 npm run typecheck
 npm run build
 npx playwright install chromium
-npm test
+npm test   # wymaga działającego http://localhost:5173
 ```
 
-Testy przeglądarkowe wymagają działającego demo na **http://localhost:5173** i resetują wyłącznie jego dane demonstracyjne. Możesz testować serwery lokalne albo uruchomiony Compose. Domyślnie używają Chromium; aby wykorzystać zainstalowany Edge na Windows: `$env:PLAYWRIGHT_CHANNEL='msedge'; npm test`. Testy obejmują komputer i viewport telefonu; to emulacja rozmiaru i interakcji, nie test natywnego Safari/iOS. Zrzuty trafiają do ignorowanego folderu `.local`.
+CI: `.github/workflows/ci.yml`.
 
-Backend sprawdza politykę bezpieczeństwa, duplikaty, stany, konflikty wersji, równoczesne potwierdzenia, kompletne demo i izolację prawdziwych danych. Integracje są testowane z podstawionymi klientami: w testach nie wysyłamy maili, nie wykonujemy płatnych wywołań modelu ani realnych powiadomień.
+---
 
-Workflow `.github/workflows/ci.yml` dodaje testy backendu, typecheck/build, uruchomienie Compose i testy przeglądarkowe w CI.
+## Granice MVP (ważne przed wdrożeniem firmowym)
 
-## Znane granice MVP
+- **Jedna skrzynka / jeden użytkownik** na bazę; jeden proces backendu.
+- To filtr wspomagający, nie gwarancja poprawności LLM ani ochrona przed spoofingiem / prompt injection — **ostateczna decyzja i treść są ludzkie**.
+- Brak backfillu historii Gmail, migracji schematu, multi-tenant, polityki retencji i pełnego audytu.
+- Treści maili i drafty w SQLite **nie są szyfrowane** (szyfrowane są tokeny OAuth).
+- Załączniki nie są analizowane; duże skrzynki wymagają lepszej strategii sync.
+- Brak automatycznego ponawiania niepewnej wysyłki.
 
-- Jedna skrzynka i jeden użytkownik na bazę. Jedna instancja backendu; lokalny scheduler i blokady nie są projektem rozproszonym.
-- To konserwatywny filtr, nie gwarancja poprawności ani kompletne zabezpieczenie przed prompt injection lub spoofingiem. Reguły słownikowe mogą zatrzymywać bezpieczne sprawy; nie rozumieją wszystkich wariantów języka. Finalną treść ocenia człowiek.
-- Kwoty akceptowane tylko w jednej walucie, bez przeliczania kursów. Data dzienna, bez osobnego stanu upływu godziny; porównanie dat w strefie Europe/Warsaw.
-- Synchronizacja od momentu połączenia Gmail (bez backfillu historii), maksymalnie 500 wiadomości na przebieg. Dla małej skrzynki hackathonowej; duże skrzynki wymagają historyId/cursora i lepszego limitowania pracy.
-- Załączniki i długie/nieprawidłowe wiadomości wymagają ręcznego sprawdzenia. Nie śledzimy zmian wątku po analizie. Drafty są prostymi szablonami na podstawie zaakceptowanego wyboru.
-- Nie ma automatycznego ponawiania niepewnej wysyłki, mechanizmu rozstrzygania jej wyniku, migracji schematu ani wieloużytkownikowego logowania.
-- Sekrety OAuth są szyfrowane, treści maili i drafty w SQLite nie. Nie ma jeszcze polityki retencji, backupów ani pełnego audytu.
-- Prawdziwe wywołania Gmail, Gemini i Web Push wymagają własnej konfiguracji. Ich obecność w kodzie i testy z podstawionym klientem nie są testem autoryzacji na realnym koncie.
-- Docker Compose został przygotowany i statycznie sprawdzony. Na komputerze implementacji nie było Docker Engine/Desktop, więc lokalnie wykonano uruchomienie bez kontenerów; uruchomienie kontenerów pozostaje do weryfikacji na hoście z Dockerem.
+Na start produkcyjny: osobna skrzynka testowa, HTTPS, własne sekrety, monitorowanie kosztów Gemini i limity Google API.
 
-## Dokumentacja źródłowa integracji
+---
+
+## Dokumentacja zewnętrzna
 
 - [Gemini structured outputs](https://ai.google.dev/gemini-api/docs/structured-output)
-- [Gmail: wysyłanie wiadomości i odpowiedzi](https://developers.google.com/workspace/gmail/api/guides/sending)
-- [shadcn/ui z Vite i Tailwind](https://ui.shadcn.com/docs/installation/vite)
+- [Gmail API — wysyłanie](https://developers.google.com/workspace/gmail/api/guides/sending)
+- [Google Cloud OAuth](https://developers.google.com/identity/protocols/oauth2)
