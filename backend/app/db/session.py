@@ -8,12 +8,15 @@ from app.db.models import Base
 def ensure_schema(engine):
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
-    if not inspector.has_table("gmail_connection"):
-        return
-    columns = {column["name"] for column in inspector.get_columns("gmail_connection")}
-    if "connected_at" not in columns:
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE gmail_connection ADD COLUMN connected_at DATETIME"))
+    with engine.begin() as connection:
+        if inspector.has_table("gmail_connection"):
+            columns = {column["name"] for column in inspector.get_columns("gmail_connection")}
+            if "connected_at" not in columns:
+                connection.execute(text("ALTER TABLE gmail_connection ADD COLUMN connected_at DATETIME"))
+        if inspector.has_table("decisions"):
+            columns = {column["name"] for column in inspector.get_columns("decisions")}
+            if "is_demo" not in columns:
+                connection.execute(text("ALTER TABLE decisions ADD COLUMN is_demo BOOLEAN DEFAULT 0 NOT NULL"))
 
 
 def create_database(settings):
