@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.core.errors import DomainError
 from app.db.models import Decision, GmailConnection
-from app.schemas.decision import ChoiceIn, DecisionOut, DraftIn, PushIn, SendIn
+from app.schemas.decision import ChoiceIn, DecisionOut, DismissIn, DraftIn, PushIn, SendIn
 from app.services import drafts
 
 router = APIRouter(prefix="/api")
@@ -27,7 +27,7 @@ def authorized(request: Request):
 
 def live_only(request):
     if request.app.state.settings.app_mode != "live":
-        raise DomainError("Ta integracja jest wyłączona w trybie live.", 400)
+        raise DomainError("Ta integracja jest dostępna tylko w trybie live.", 400)
 
 
 @router.get("/health")
@@ -107,7 +107,7 @@ def update_settings(data: SettingsIn, request: Request):
 @router.get("/decisions", response_model=list[DecisionOut], dependencies=[Depends(authorized)])
 def list_decisions(request: Request, session=Depends(session_db)):
     return session.scalars(
-        select(Decision).where(Decision.status != "skipped").order_by(Decision.received_at.desc())
+        select(Decision).where(drafts.visible_filter()).order_by(Decision.received_at.desc())
     ).all()
 
 
@@ -136,6 +136,14 @@ def choose(decision_id: str, data: ChoiceIn, request: Request, session=Depends(s
     )
 
 
+@router.post(
+    "/decisions/{decision_id}/dismiss", response_model=DecisionOut, dependencies=[Depends(authorized)]
+)
+def dismiss(decision_id: str, data: DismissIn, request: Request, session=Depends(session_db)):
+    decision = drafts.get_decision(session, decision_id, request.app.state.settings)
+    return drafts.dismiss(session, decision, data.version)
+
+
 @router.patch(
     "/decisions/{decision_id}/draft", response_model=DecisionOut, dependencies=[Depends(authorized)]
 )
@@ -157,6 +165,24 @@ def subscribe(data: PushIn, request: Request, session=Depends(session_db)):
         raise DomainError("Web Push nie jest skonfigurowany. Kolejka działa bez powiadomień.", 503)
     request.app.state.push.subscribe(session, data)
     return {"subscribed": True}
+
+
+@router.delete("/push/subscriptions", dependencies=[Depends(authorized)])
+def unsubscribe(endpoint: str, request: Request, session=Depends(session_db)):
+    if not endpoint or len(endpoint) > 2048:
+        raise DomainError("Nieprawidłowy endpoint powiadomień.", 400)
+    request.app.state.push.unsubscribe(session, endpoint)
+    return {"subscribed": False}
+
+
+@router.delete("/gmail/connection", dependencies=[Depends(authorized)])
+def disconnect_gmail(request: Request, session=Depends(session_db)):
+    live_only(request)
+    connection = session.get(GmailConnection, 1)
+    if connection:
+        session.delete(connection)
+        session.commit()
+    return {"connected": False}
 
 
 @router.post("/oauth/gmail/start", dependencies=[Depends(authorized)])
@@ -182,7 +208,7 @@ def oauth_callback(request: Request, session=Depends(session_db)):
     ):
         raise DomainError("Sesja OAuth wygasła lub jest nieprawidłowa. Połącz konto ponownie.", 400)
     code = request.query_params.get("code")
-    url = request.app.state.settings.frontend_url.rstrip("/") + "/integrations"
+    url = request.app.state.settings.frontend_url.rstrip("/") + "/settings"
     if not code or request.query_params.get("error"):
         return RedirectResponse(url + "?oauth=cancelled", status_code=303)
     try:

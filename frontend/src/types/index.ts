@@ -20,7 +20,13 @@ export interface Decision {
   safety_reasons: string[];
   confidence: number;
   classification: "needs_reply" | "needs_review" | "skip";
-  status: "analyzed" | "pending" | "skipped" | "draft_ready" | "sent";
+  status:
+    | "analyzed"
+    | "pending"
+    | "skipped"
+    | "dismissed"
+    | "draft_ready"
+    | "sent";
   user_choice: "approve" | "reject" | null;
   draft: string | null;
   created_at: string;

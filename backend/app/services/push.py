@@ -28,6 +28,14 @@ class PushService:
         except IntegrityError:
             session.rollback()  # Another tab may have just saved the same subscription.
 
+    def unsubscribe(self, session, endpoint: str):
+        existing = session.scalar(
+            select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        )
+        if existing:
+            session.delete(existing)
+            session.commit()
+
     def notify(self, decision_id, body: str | None = None):
         if not self.settings.push_configured:
             return

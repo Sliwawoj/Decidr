@@ -93,6 +93,10 @@ class ChoiceIn(BaseModel):
     version: int = Field(ge=1)
 
 
+class DismissIn(BaseModel):
+    version: int = Field(ge=1)
+
+
 class DraftIn(BaseModel):
     draft: str = Field(min_length=1, max_length=5000)
     version: int = Field(ge=1)

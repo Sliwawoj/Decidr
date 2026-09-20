@@ -50,6 +50,10 @@ export const api = {
       choice,
       version: d.version,
     }),
+  dismiss: (d: Decision) =>
+    request<Decision>("/decisions/" + d.id + "/dismiss", "POST", {
+      version: d.version,
+    }),
   edit: (d: Decision, draft: string) =>
     request<Decision>("/decisions/" + d.id + "/draft", "PATCH", {
       draft,
@@ -63,6 +67,8 @@ export const api = {
   sync: () => request<{ imported: number }>("/gmail/sync", "POST"),
   login: (password: string) => request("/session", "POST", { password }),
   oauth: () => request<{ url: string }>("/oauth/gmail/start", "POST"),
+  disconnectGmail: () =>
+    request<{ connected: boolean }>("/gmail/connection", "DELETE"),
   saveSettings: (emailSignature: string) =>
     request<{ email_signature: string }>("/settings", "PATCH", {
       email_signature: emailSignature,

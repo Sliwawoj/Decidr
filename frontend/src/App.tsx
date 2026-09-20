@@ -1,36 +1,26 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import {
-  ArrowUpRight,
-  Bell,
-  Check,
-  ChevronRight,
-  CircleHelp,
-  History,
-  Inbox,
-  Layers3,
-  LoaderCircle,
-  LogOut,
-  Menu,
-  Plug2,
-  ShieldCheck,
-  X,
-} from "lucide-react";
+  Link,
+  NavLink,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
+import { Check, LoaderCircle, Settings, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ErrorNotice, Loading } from "@/components/common";
-import { api, request } from "@/services/api";
+import { api } from "@/services/api";
 import type { AppStatus, Decision } from "@/types";
 import QueuePage from "@/pages/QueuePage";
 import DecisionPage from "@/pages/DecisionPage";
-import IntegrationsPage from "@/pages/IntegrationsPage";
+import SettingsPage from "@/pages/SettingsPage";
 
 export default function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [menu, setMenu] = useState(false);
   const location = useLocation();
   const refresh = useCallback(async () => {
     setError("");
@@ -49,140 +39,52 @@ export default function App() {
     void refresh();
   }, [refresh]);
   useEffect(() => {
-    setMenu(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
   useEffect(() => {
     if ("serviceWorker" in navigator)
       navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
-  // Refresh queue summaries as scheduler imports messages; detail editors keep their own snapshot.
+  // Refresh queue as the backend syncs Gmail (~30s); keep the UI lag under one poll.
   useEffect(() => {
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
-    }, 30000);
+    }, 10000);
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const pending = decisions.filter((d) =>
-    ["pending", "draft_ready"].includes(d.status),
-  ).length;
-  const nav = [
-    { path: "/", label: "Kolejka decyzji", icon: Inbox, count: pending },
-    { path: "/history", label: "Historia", icon: History, count: 0 },
-    { path: "/integrations", label: "Integracje", icon: Plug2, count: 0 },
-  ];
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main">
         Przejdź do treści
       </a>
-      {menu && (
-        <button
-          className="mobile-scrim"
-          aria-label="Zamknij nawigację"
-          onClick={() => setMenu(false)}
-        />
-      )}
-      <aside className={"sidebar" + (menu ? " is-open" : "")}>
-        <Link to="/" className="brand">
-          <span className="brand-symbol">
-            D<span />
-          </span>
-          decidr<span className="brand-period">.</span>
-        </Link>
-        <div className="workspace">
-          <div className="workspace-icon">
-            <Layers3 size={18} />
-          </div>
-          <div>
-            <strong>Moja przestrzeń</strong>
-            <span>Centrum decyzji</span>
-          </div>
-          <ChevronRight size={14} />
-        </div>
-        <div className="nav-label">TWOJA PRACA</div>
-        <nav aria-label="Nawigacja główna">
-          {nav.map(({ path, label, icon: Icon, count }) => (
-            <NavLink
-              key={path}
-              to={path}
-              end
-              className={({ isActive }) =>
-                "nav-item" + (isActive ? " active" : "")
-              }
-            >
-              <Icon size={19} />
-              <span>{label}</span>
-              {count > 0 && <span className="nav-count">{count}</span>}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="safety-note">
-            <ShieldCheck size={22} />
-            <strong>Ostatnie słowo należy do Ciebie.</strong>
-            <p>Każda odpowiedź wymaga Twojego potwierdzenia.</p>
-          </div>
-          <Link className="sidebar-help" to="/integrations">
-            <CircleHelp size={17} />
-            Jak działa Decidr
-            <ArrowUpRight size={15} />
-          </Link>
-          <div className="profile">
-            <div className="avatar avatar-navy">
-              {status?.mode === "live" ? "JA" : "DE"}
-            </div>
-            <div>
-              <strong>Twoje konto</strong>
-              <span>Tryb live</span>
-            </div>
-            {status?.mode === "live" && status.authenticated && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Wyloguj"
-                onClick={async () => {
-                  await request("/session", "DELETE");
-                  await refresh();
-                }}
-              >
-                <LogOut size={16} />
-              </Button>
-            )}
-          </div>
-        </div>
-      </aside>
       <div className="main-shell">
         <header className="topbar">
-          <div className="breadcrumb">
-            <Button
-              className="mobile-menu"
-              variant="ghost"
-              size="icon"
-              aria-label="Otwórz menu"
-              onClick={() => setMenu(!menu)}
+          <div className="topbar-leading">
+            <Link
+              to="/"
+              className="brand topbar-brand"
+              aria-label="decidr. — strona główna"
             >
-              {menu ? <X size={20} /> : <Menu size={20} />}
-            </Button>
-            <span>Moja przestrzeń</span>
-            <ChevronRight size={14} />
-            <strong>
-              {location.pathname.startsWith("/decisions")
-                ? "Karta Decyzji"
-                : nav.find((n) => n.path === location.pathname)?.label ||
-                  "Decidr"}
-            </strong>
+              <span className="brand-symbol">
+                D<span />
+              </span>
+              decidr<span className="brand-period">.</span>
+            </Link>
           </div>
           <div className="topbar-actions">
-            {status && <Badge className="badge-success">Tryb live</Badge>}
-            <Link
-              className="notification-link"
-              to="/integrations"
-              aria-label="Ustawienia powiadomień"
-            >
-              <Bell size={19} />
-            </Link>
+            {status?.authenticated && (
+              <NavLink
+                to="/settings"
+                className={({ isActive }) =>
+                  "topbar-icon-link" + (isActive ? " active" : "")
+                }
+                aria-label="Ustawienia"
+                title="Ustawienia"
+              >
+                <Settings size={19} />
+              </NavLink>
+            )}
           </div>
         </header>
         <main id="main" className="main-content">
@@ -201,7 +103,6 @@ export default function App() {
                   element={
                     <QueuePage
                       decisions={decisions}
-                      status={status}
                       refresh={refresh}
                       view="queue"
                     />
@@ -212,7 +113,6 @@ export default function App() {
                   element={
                     <QueuePage
                       decisions={decisions}
-                      status={status}
                       refresh={refresh}
                       view="history"
                     />
@@ -223,10 +123,14 @@ export default function App() {
                   element={<DecisionPage refresh={refresh} />}
                 />
                 <Route
-                  path="/integrations"
+                  path="/settings"
                   element={
-                    <IntegrationsPage status={status} refresh={refresh} />
+                    <SettingsPage status={status} refresh={refresh} />
                   }
+                />
+                <Route
+                  path="/integrations"
+                  element={<Navigate to="/settings" replace />}
                 />
                 <Route
                   path="*"
@@ -242,13 +146,15 @@ export default function App() {
               </Routes>
             )
           )}
-          <footer className="app-footer">
-            <span>
-              decidr<span className="brand-period">.</span>
-            </span>
-            <span>Mniej otwartych wątków. Więcej spokoju.</span>
-            <ShieldCheck size={15} />
-          </footer>
+          {location.pathname !== "/" && (
+            <footer className="app-footer">
+              <span>
+                decidr<span className="brand-period">.</span>
+              </span>
+              <span>Mniej otwartych wątków. Więcej spokoju.</span>
+              <ShieldCheck size={15} />
+            </footer>
+          )}
         </main>
       </div>
     </div>

@@ -129,6 +129,17 @@ def test_choice_only_creates_draft(client, choice, word):
     assert not client.app.state.gmail.send_reply.called
 
 
+def test_dismiss_hides_from_queue(client):
+    row = pending(client)
+    response = client.post(
+        f"/api/decisions/{row['id']}/dismiss", json={"version": row["version"]}
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "dismissed"
+    assert all(item["id"] != row["id"] for item in client.get("/api/decisions").json())
+    assert client.get(f"/api/decisions/{row['id']}").status_code == 404
+
+
 @pytest.mark.parametrize("confirmation", [False, "true", 1, None])
 def test_send_requires_strict_confirmation(client, confirmation):
     row = draft(client)

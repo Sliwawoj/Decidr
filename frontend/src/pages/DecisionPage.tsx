@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,6 +15,7 @@ import {
   Save,
   Send,
   ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,7 @@ export default function DecisionPage({
   refresh: () => Promise<void>;
 }) {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [decision, setDecision] = useState<Decision | null>(null);
   const [draftText, setDraftText] = useState("");
   const [error, setError] = useState("");
@@ -89,6 +91,20 @@ export default function DecisionPage({
       setBusy(false);
     }
   }
+  async function dismiss() {
+    if (!decision) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.dismiss(decision);
+      await refresh();
+      navigate("/");
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
   async function prepareConfirmation() {
     if (!decision) return;
     const saved =
@@ -121,6 +137,8 @@ export default function DecisionPage({
     ...d.risk_flags.filter((flag) => !d.safety_reasons.includes(flag)),
   ];
   const done = d.status === "sent";
+  const canDismiss =
+    ["pending", "draft_ready"].includes(d.status) && !d.send_attempted_at;
   const gmailUrl =
     "https://mail.google.com/mail/u/0/#all/" +
     encodeURIComponent(d.gmail_thread_id);
@@ -220,6 +238,29 @@ export default function DecisionPage({
                 </div>
               )}
             </div>
+            <div className="analysis-flags">
+              <div className="section-eyebrow">FLAGI ANALIZY</div>
+              <dl>
+                <div>
+                  <dt>classification</dt>
+                  <dd>
+                    <Badge
+                      className={
+                        d.classification === "needs_reply"
+                          ? "badge-success"
+                          : "badge-warning"
+                      }
+                    >
+                      {d.classification}
+                    </Badge>
+                  </dd>
+                </div>
+                <div>
+                  <dt>confidence</dt>
+                  <dd>{Math.round(d.confidence * 100)}%</dd>
+                </div>
+              </dl>
+            </div>
             {d.conditions.length > 0 && (
               <div className="conditions">
                 <h3>Warunki prośby</h3>
@@ -257,7 +298,7 @@ export default function DecisionPage({
           </div>
         </div>
         <div className="action-column">
-          {d.status === "pending" ? (
+          {d.status === "pending" && d.classification === "needs_reply" ? (
             <Card className="choose-card">
               <div className="step-label">
                 <span>01</span>TWÓJ WYBÓR
@@ -290,6 +331,17 @@ export default function DecisionPage({
                   Odrzuć
                 </Button>
               </div>
+              {canDismiss && (
+                <button
+                  type="button"
+                  className="dismiss-action"
+                  disabled={busy}
+                  onClick={() => void dismiss()}
+                >
+                  <Trash2 size={14} />
+                  Nie odpowiadaj — zostaw w mailu
+                </button>
+              )}
               <div className="choice-note">
                 <LockKeyhole size={15} />
                 Ten krok tylko przygotuje draft.
@@ -298,21 +350,42 @@ export default function DecisionPage({
           ) : (
             <Card className="draft-card">
               <div className="step-label">
-                <span>{done ? "03" : "02"}</span>
-                {done ? "ZAKOŃCZONA SPRAWA" : "TWOJA ODPOWIEDŹ"}
+                <span>
+                  {done
+                    ? "03"
+                    : d.classification === "needs_review"
+                      ? "01"
+                      : "02"}
+                </span>
+                {done
+                  ? "ZAKOŃCZONA SPRAWA"
+                  : d.classification === "needs_review"
+                    ? "ODPOWIEDŹ DO EDYCJI"
+                    : "TWOJA ODPOWIEDŹ"}
               </div>
               <div className="draft-title">
                 <h2>
-                  {done ? "Zatwierdzona odpowiedź" : "Sprawdź swój draft"}
+                  {done
+                    ? "Zatwierdzona odpowiedź"
+                    : d.classification === "needs_review"
+                      ? "Sprawdź i dopracuj draft"
+                      : "Sprawdź swój draft"}
                 </h2>
-                <Badge className="badge-neutral">
-                  {d.user_choice === "approve" ? "Zezwól" : "Odrzuć"}
-                </Badge>
+                {d.user_choice && (
+                  <Badge className="badge-neutral">
+                    {d.user_choice === "approve" ? "Zezwól" : "Odrzuć"}
+                  </Badge>
+                )}
+                {!d.user_choice && d.classification === "needs_review" && (
+                  <Badge className="badge-warning">needs_review</Badge>
+                )}
               </div>
               <p>
                 {done
                   ? "Treść zaakceptowana w ostatnim kroku."
-                  : "Możesz zmienić treść, zanim potwierdzisz ostatni krok."}
+                  : d.classification === "needs_review"
+                    ? "LLM przygotował propozycję odpowiedzi. Możesz ją dowolnie edytować przed wysyłką."
+                    : "Możesz zmienić treść, zanim potwierdzisz ostatni krok."}
               </p>
               <div className="draft-recipient">
                 <span>Do:</span>
@@ -368,6 +441,17 @@ export default function DecisionPage({
                       Przejdź do potwierdzenia
                     </Button>
                   </div>
+                  {canDismiss && (
+                    <button
+                      type="button"
+                      className="dismiss-action"
+                      disabled={busy}
+                      onClick={() => void dismiss()}
+                    >
+                      <Trash2 size={14} />
+                      Nie odpowiadaj — zostaw w mailu
+                    </button>
+                  )}
                   <div className="choice-note">
                     <LockKeyhole size={15} />
                     Przed wysyłką pokażemy pełny podgląd.
@@ -378,7 +462,7 @@ export default function DecisionPage({
                 <ErrorNotice
                   message={
                     d.send_error ||
-                    "Wysyłka została rozpoczęta. Odśwież widok i sprawdź Gmail. Nie ponawiamy automatycznie."
+                    "Wysyłka mogła dojść. Otwórz Gmail i sprawdź ten wątek — Decidr nie ponawia wysyłki automatycznie."
                   }
                   retry={() => void load()}
                 />
@@ -406,7 +490,8 @@ export default function DecisionPage({
           </div>
           <DialogTitle>Potwierdź wysłanie odpowiedzi</DialogTitle>
           <DialogDescription>
-            Wyślemy dokładnie tę treść do wskazanego odbiorcy w oryginalnym wątku Gmaila.
+            Wyślemy dokładnie tę treść do wskazanego odbiorcy w oryginalnym
+            wątku Gmaila.
           </DialogDescription>
           <div className="confirmation-meta">
             <div>

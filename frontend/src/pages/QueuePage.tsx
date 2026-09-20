@@ -1,57 +1,80 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Check, LoaderCircle, Send } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
-  ArrowDown,
-  ArrowRight,
-  Check,
-  CheckCheck,
-  Clock3,
-  FileText,
-  Inbox,
-  LoaderCircle,
-  RefreshCw,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { DecisionCard, Empty, ErrorNotice } from "@/components/common";
-import type { AppStatus, Decision } from "@/types";
+import { StreamToggle, type StreamId } from "@/components/mobile/StreamToggle";
+import { TicketCard } from "@/components/mobile/TicketCard";
+import { ThumbZone } from "@/components/mobile/ThumbZone";
+import { haptic } from "@/lib/haptic";
 import { api } from "@/services/api";
+import type { Decision } from "@/types";
 
 interface Props {
   decisions: Decision[];
-  status: AppStatus;
   refresh: () => Promise<void>;
   view: "queue" | "history";
 }
-export default function QueuePage({ decisions, status, refresh, view }: Props) {
-  const [filter, setFilter] = useState("all");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+
+function chipsFor(d: Decision): string[] {
+  const fromConditions = d.conditions.filter((c) => c.trim().length > 0);
+  if (fromConditions.length) return fromConditions.slice(0, 4);
+  return d.missing_fields
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((f) => f.replace(/_/g, " "));
+}
+
+export default function QueuePage({ decisions, refresh, view }: Props) {
+  const [stream, setStream] = useState<StreamId>("quick");
+  const [cursor, setCursor] = useState(0);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [selectedChip, setSelectedChip] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<Decision | null>(null);
+
   const pending = decisions.filter((d) => d.status === "pending");
   const drafts = decisions.filter((d) => d.status === "draft_ready");
-  const done = decisions.filter((d) => ["sent"].includes(d.status));
-  const visible =
-    view === "history"
-      ? done
-      : filter === "drafts"
-        ? drafts
-        : filter === "pending"
-          ? pending
-          : [...drafts, ...pending];
-  async function sync() {
+  const done = decisions.filter((d) => d.status === "sent");
+
+  const streamItems = stream === "quick" ? pending : drafts;
+  const safeIndex = streamItems.length
+    ? Math.min(cursor, streamItems.length - 1)
+    : 0;
+  const current = streamItems[safeIndex] ?? null;
+
+  useEffect(() => {
+    setCursor(0);
+  }, [stream]);
+
+  useEffect(() => {
+    if (cursor > 0 && cursor >= streamItems.length) {
+      setCursor(Math.max(0, streamItems.length - 1));
+    }
+  }, [cursor, streamItems.length]);
+
+  useEffect(() => {
+    if (!current || current.status !== "draft_ready") {
+      setSelectedChip(null);
+      return;
+    }
+    setDraftText(current.draft || "");
+    setSelectedChip(null);
+  }, [current?.id, current?.version]);
+
+  async function run(op: () => Promise<void>) {
     setBusy(true);
-    setMessage("");
     setError("");
     try {
-      if (status.mode === "live") {
-        const result = await api.sync();
-        setMessage(
-          "Synchronizacja zakończona. Nowe sprawy: " + result.imported + ".",
-        );
-      }
+      await op();
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -59,200 +82,268 @@ export default function QueuePage({ decisions, status, refresh, view }: Props) {
       setBusy(false);
     }
   }
-  return (
-    <div className="page-enter">
-      <div className="page-heading">
-        <div>
-          <div className="section-eyebrow">
-            {view === "history"
-              ? "ZAMKNIĘTE WĄTKI"
-              : "TWÓJ DZIEŃ, TROCHĘ PROSTSZY"}
+
+  async function choose(choice: "approve" | "reject") {
+    if (!current) return;
+    await run(async () => {
+      await api.choose(current, choice);
+      setStream("complete");
+    });
+  }
+
+  async function leave() {
+    if (!current) return;
+    await run(async () => {
+      await api.dismiss(current);
+    });
+  }
+
+  async function prepareSend() {
+    if (!current) return;
+    setBusy(true);
+    setError("");
+    try {
+      let next = current;
+      if (draftText.trim() !== (current.draft || "").trim()) {
+        next = await api.edit(current, draftText);
+      }
+      setConfirmation(next);
+      haptic(10);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmSend() {
+    if (!confirmation) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.send(confirmation);
+      setConfirmation(null);
+      await refresh();
+      haptic(18);
+    } catch (e) {
+      setError((e as Error).message);
+      setConfirmation(null);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyChip(chip: string) {
+    haptic(8);
+    setSelectedChip(chip);
+    setDraftText((prev) => {
+      const base = prev.trim();
+      if (!base) return chip;
+      if (base.includes(chip)) return base;
+      return base + (base.endsWith(".") ? " " : ". ") + chip;
+    });
+  }
+
+  if (view === "history") {
+    return (
+      <div className="page-enter queue-page history-page">
+        <div className="page-heading">
+          <div>
+            <h1>Historia</h1>
+            <p>Zatwierdzone odpowiedzi w jednym miejscu.</p>
           </div>
-          <h1>{view === "history" ? "Historia decyzji" : "Twoje decyzje"}</h1>
+        </div>
+        {error && <ErrorNotice message={error} />}
+        <div className="decision-stack">
+          {done.map((d) => (
+            <DecisionCard
+              key={d.id}
+              decision={d}
+              onRefresh={async () => {
+                setError("");
+                try {
+                  await refresh();
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+            />
+          ))}
+        </div>
+        {!done.length && (
+          <Empty
+            title="Historia dopiero się zaczyna"
+            description="Zatwierdzone odpowiedzi pojawią się właśnie tutaj."
+          />
+        )}
+      </div>
+    );
+  }
+
+  const bothEmpty = pending.length === 0 && drafts.length === 0;
+
+  return (
+    <div className="page-enter workspace">
+      <h1 className="sr-only">Twoje decyzje</h1>
+
+      <StreamToggle
+        value={stream}
+        counts={{ quick: pending.length, complete: drafts.length }}
+        onChange={setStream}
+      />
+
+      {error && <ErrorNotice message={error} />}
+
+      {bothEmpty ? (
+        <div className="inbox-zero">
+          <div className="inbox-zero-mark" aria-hidden />
+          <h2>W kolejce jest spokojnie.</h2>
+          <p>Skrzynka odciążona.</p>
+        </div>
+      ) : !current ? (
+        <div className="inbox-zero inbox-zero-soft">
+          <h2>
+            {stream === "quick"
+              ? "Brak spraw Tak/Nie"
+              : "Brak szkiców do uzupełnienia"}
+          </h2>
           <p>
-            {view === "history"
-              ? "Twoje wybory i zatwierdzone odpowiedzi w jednym miejscu."
-              : "Wiadomości, które czekają na Twoją reakcję."}
+            {stream === "quick"
+              ? "Przełącz na Wybór / Uzupełnij albo poczekaj na synchronizację."
+              : "Zezwól lub Odrzuć w strumieniu Szybkie, aby przygotować szkic."}
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={sync}
-          disabled={busy || (status.mode === "live" && !status.gmail.connected)}
-        >
-          <RefreshCw size={16} className={busy ? "spin" : ""} />
-          {busy ? "Odświeżanie…" : "Synchronizuj Gmail"}
-        </Button>
-      </div>
-      {error && <ErrorNotice message={error} />}
-      {message && (
-        <div className="notice notice-success" role="status">
-          <Check size={18} />
-          {message}
+      ) : (
+        <div className="workspace-stage">
+          <div className="workspace-counter">
+            <button
+              type="button"
+              className="workspace-nav"
+              disabled={busy || safeIndex <= 0}
+              aria-label="Poprzednia sprawa"
+              onClick={() => setCursor((c) => Math.max(0, c - 1))}
+            >
+              ‹
+            </button>
+            <span className="ticket-mono">
+              {String(safeIndex + 1).padStart(2, "0")}
+            </span>
+            <span>/</span>
+            <span className="ticket-mono">
+              {String(streamItems.length).padStart(2, "0")}
+            </span>
+            <button
+              type="button"
+              className="workspace-nav"
+              disabled={busy || safeIndex >= streamItems.length - 1}
+              aria-label="Następna sprawa"
+              onClick={() =>
+                setCursor((c) => Math.min(streamItems.length - 1, c + 1))
+              }
+            >
+              ›
+            </button>
+          </div>
+
+          <TicketCard
+            decision={current}
+            chips={stream === "complete" ? chipsFor(current) : undefined}
+            selectedChip={selectedChip}
+            onChip={applyChip}
+            onSwipeStream={(dir) => {
+              haptic(8);
+              if (dir === "left") setStream("complete");
+              else setStream("quick");
+            }}
+          />
+
+          {stream === "complete" && (
+            <div className="workspace-draft">
+              <label htmlFor="workspace-draft" className="sr-only">
+                Treść odpowiedzi
+              </label>
+              <Textarea
+                id="workspace-draft"
+                className="workspace-draft-input"
+                value={draftText}
+                onChange={(e) => setDraftText(e.target.value)}
+                maxLength={5000}
+                rows={6}
+                disabled={busy}
+              />
+              <div className="workspace-draft-meta">
+                <span>{draftText.length}/5000</span>
+                <Link to={"/decisions/" + current.id} className="text-link">
+                  Pełny kontekst
+                </Link>
+              </div>
+            </div>
+          )}
+
+          <ThumbZone
+            mode={stream}
+            busy={busy}
+            onAllow={() => void choose("approve")}
+            onReject={() => void choose("reject")}
+            onConfirm={() => void prepareSend()}
+            onLeave={() => void leave()}
+            confirmLabel="Zatwierdź i wyślij"
+          />
         </div>
       )}
-      <div className="stats-grid">
-        <Card className="stat-card">
-          <div className="stat-icon icon-blue">
-            <Inbox size={21} />
+
+      <Dialog
+        open={!!confirmation}
+        onOpenChange={(open) => {
+          if (!open && !busy) setConfirmation(null);
+        }}
+      >
+        <DialogContent
+          onEscapeKeyDown={(e) => {
+            if (busy) e.preventDefault();
+          }}
+          onPointerDownOutside={(e) => {
+            if (busy) e.preventDefault();
+          }}
+        >
+          <div className="modal-icon">
+            <Send size={25} />
           </div>
-          <div>
-            <span>Czeka na Twój wybór</span>
-            <strong>{pending.length.toString().padStart(2, "0")}</strong>
-          </div>
-          <span className="stat-caption">szybka odpowiedź</span>
-        </Card>
-        <Card className="stat-card">
-          <div className="stat-icon icon-amber">
-            <FileText size={21} />
-          </div>
-          <div>
-            <span>Drafty do sprawdzenia</span>
-            <strong>{drafts.length.toString().padStart(2, "0")}</strong>
-          </div>
-          <span className="stat-caption">przed potwierdzeniem</span>
-        </Card>
-        <Card className="stat-card">
-          <div className="stat-icon icon-green">
-            <CheckCheck size={21} />
-          </div>
-          <div>
-            <span>Zakończone sprawy</span>
-            <strong>{done.length.toString().padStart(2, "0")}</strong>
-          </div>
-          <span className="stat-caption">wysłane odpowiedzi</span>
-        </Card>
-      </div>
-      <div className="queue-layout">
-        <div className="queue-column">
-          {view === "queue" ? (
-            <div className="section-toolbar">
-              <div className="tabs" aria-label="Filtruj kolejkę">
-                {[
-                  ["all", "Do działania", pending.length + drafts.length],
-                  ["pending", "Nowe", pending.length],
-                  ["drafts", "Drafty", drafts.length],
-                ].map(([id, label, count]) => (
-                  <button
-                    key={id}
-                    className={filter === id ? "tab active" : "tab"}
-                    aria-pressed={filter === id}
-                    onClick={() => setFilter(String(id))}
-                  >
-                    {label}
-                    <span>{count}</span>
-                  </button>
-                ))}
-              </div>
-              <span className="sort-label">
-                <ArrowDown size={13} />
-                Najnowsze
-              </span>
+          <DialogTitle>Potwierdź wysłanie odpowiedzi</DialogTitle>
+          <DialogDescription>
+            Wyślemy dokładnie tę treść w oryginalnym wątku Gmaila.
+          </DialogDescription>
+          <div className="confirmation-meta">
+            <div>
+              <span>Odbiorca</span>
+              <strong>{confirmation?.sender_email}</strong>
             </div>
-          ) : (
-            <div className="section-toolbar">
-              <h2>
-                Zakończone{" "}
-                <span className="inline-count">{visible.length}</span>
-              </h2>
+            <div>
+              <span>Temat</span>
+              <strong>Re: {confirmation?.subject}</strong>
             </div>
-          )}
-          <div className="decision-stack">
-            {visible.map((d) => (
-              <DecisionCard key={d.id} decision={d} />
-            ))}
           </div>
-          {!visible.length && (
-            <Empty
-              title={
-                view === "history"
-                  ? "Historia dopiero się zaczyna"
-                  : filter === "drafts"
-                    ? "Nie masz otwartych draftów"
-                    : "W kolejce jest spokojnie"
-              }
-              description={
-                view === "history"
-                  ? "Zatwierdzone odpowiedzi pojawią się właśnie tutaj."
-                  : filter === "drafts"
-                    ? "Wybierz Zezwól lub Odrzuć w sprawie, aby przygotować odpowiedź."
-                    : "Nowe sprawy pojawią się tutaj po synchronizacji."
-              }
-            />
-          )}
-        </div>
-        <aside className="context-rail">
-          <Card className="how-card">
-            <div className="rail-icon">
-              <Sparkles size={21} />
-            </div>
-            <h2>
-              Małe decyzje.
-              <br />
-              Lżejszy dzień.
-            </h2>
-            <p>Od prośby do odpowiedzi, bez gubienia kontekstu.</p>
-            <ol className="steps">
-              <li>
-                <span>1</span>
-                <div>
-                  <strong>Przeczytaj kartę</strong>
-                  <p>Prośba, kwota i warunki.</p>
-                </div>
-              </li>
-              <li>
-                <span>2</span>
-                <div>
-                  <strong>Podejmij decyzję</strong>
-                  <p>Zezwól albo odrzuć.</p>
-                </div>
-              </li>
-              <li>
-                <span>3</span>
-                <div>
-                  <strong>Zatwierdź odpowiedź</strong>
-                  <p>Sprawdź draft przed wysyłką.</p>
-                </div>
-              </li>
-            </ol>
-            <div className="rail-footnote">
-              <ShieldCheck size={16} />
-              <span>Nic nie dzieje się bez Ciebie.</span>
-            </div>
-          </Card>
-          <Card className="policy-card">
-            <div className="policy-heading">
-              <ShieldCheck size={18} />
-              <strong>Jak działa kolejka</strong>
-              <span className="online-dot" />
-            </div>
-            <p>
-              Gemini ocenia każdy mail. Bez decyzji — pomijamy. Z decyzją —
-              krótki opis w powiadomieniu i karta w kolejce.
-            </p>
-            <Link className="text-link" to="/integrations">
-              Zasady i integracje
-              <ArrowUpRightIcon />
-            </Link>
-          </Card>
-          <div className="rail-bottom">
-            <Clock3 size={15} />
-            <span>
-              {status.last_sync_at
-                ? "Ostatnia synchronizacja: " +
-                  new Date(status.last_sync_at).toLocaleTimeString("pl-PL", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "Oczekiwanie na synchronizację"}
-            </span>
+          <pre className="confirmation-preview">{confirmation?.draft}</pre>
+          <div className="modal-actions">
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setConfirmation(null)}
+            >
+              Wróć
+            </Button>
+            <Button disabled={busy} onClick={() => void confirmSend()}>
+              {busy ? (
+                <LoaderCircle className="spin" size={17} />
+              ) : (
+                <Check size={17} />
+              )}
+              Potwierdzam i wysyłam
+            </Button>
           </div>
-          {busy && <LoaderCircle className="spin" size={16} />}
-        </aside>
-      </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-}
-function ArrowUpRightIcon() {
-  return <ArrowRight size={14} />;
 }

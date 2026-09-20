@@ -1,15 +1,13 @@
 import { test, expect } from "@playwright/test";
 
-test("queue and decision flow work in live mode", async ({
+test("queue workspace and decision flow work in live mode", async ({
   page,
 }, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Twoje decyzje", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Tryb live", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Twoje decyzje" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Szybkie/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "Pełny kontekst" })).toHaveCount(
     0,
   );
@@ -38,7 +36,7 @@ test("queue and decision flow work in live mode", async ({
   await page.getByRole("button", { name: "Wróć do edycji" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "Przejdź do potwierdzenia" }).click();
-  await page.getByRole("button", { name: "Potwierdzam wysyłkę" }).click();
+  await page.getByRole("button", { name: "Potwierdzam i wysyłam" }).click();
   await expect(
     page.getByRole("heading", {
       name: "Odpowiedź została wysłana.",
@@ -64,8 +62,12 @@ test("high-stakes matter stays actionable with warning, reject creates a draft",
     .getByRole("link", { name: /Pilne: akceptacja umowy partnerskiej/ })
     .click();
   await expect(page.getByText("Warto spojrzeć uważniej")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Zezwól", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Odrzuć", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Zezwól", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Odrzuć", exact: true }),
+  ).toBeVisible();
   await page.getByText("Oryginalna wiadomość", { exact: true }).click();
   await expect(
     page.getByText(/Proszę dziś zaakceptować umowę inwestycyjną/),
@@ -84,14 +86,15 @@ test("high-stakes matter stays actionable with warning, reject creates a draft",
   ).toBeVisible();
 });
 
-test("integration status is visible without secrets", async ({ page }) => {
-  await page.goto("/integrations");
+test("settings status is visible without secrets", async ({ page }) => {
+  await page.goto("/settings");
   await expect(
     page.getByRole("button", { name: "Połącz konto Gmail" }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Włącz na tym urządzeniu" }),
   ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Zapisz podpis" })).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

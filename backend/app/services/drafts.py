@@ -6,12 +6,19 @@ from sqlalchemy import select, update
 from app.core.errors import DomainError
 from app.db.models import Decision, utcnow
 
+# Soft-hidden: analyzer noise + user "don't reply". Kept so Gmail sync won't re-import.
+HIDDEN_STATUSES = ("skipped", "dismissed")
+
+
+def visible_filter():
+    return Decision.status.notin_(HIDDEN_STATUSES)
+
 
 def get_decision(session, decision_id, settings):
     decision = session.scalar(
         select(Decision).where(
             Decision.id == decision_id,
-            Decision.status != "skipped",
+            visible_filter(),
         )
     )
     if decision is None:
@@ -19,8 +26,8 @@ def get_decision(session, decision_id, settings):
     return decision
 
 
-def writable(decision, status, version):
-    if decision.classification != "needs_reply" or decision.status != status:
+def writable(decision, status, version, *, classifications=("needs_reply",)):
+    if decision.classification not in classifications or decision.status != status:
         raise DomainError("Ta sprawa nie pozwala na taką zmianę stanu.")
     if decision.version != version:
         raise DomainError("Sprawa zmieniła się w innej karcie. Odśwież widok.")
@@ -50,7 +57,7 @@ def _append_signature(draft: str, settings) -> str:
 
 
 def choose(session, decision, choice, version, analyzer=None, settings=None):
-    writable(decision, "pending", version)
+    writable(decision, "pending", version, classifications=("needs_reply",))
     if analyzer is not None:
         draft = analyzer.suggest_draft(decision, choice)
     else:
@@ -65,15 +72,28 @@ def choose(session, decision, choice, version, analyzer=None, settings=None):
     return update_versioned(session, decision, version, user_choice=choice, draft=draft, status="draft_ready")
 
 
+def dismiss(session, decision, version):
+    """Remove from queue without sending a reply. Distinct from reject (which drafts a refusal)."""
+    if decision.classification not in ("needs_reply", "needs_review"):
+        raise DomainError("Ta sprawa nie pozwala na taką zmianę stanu.")
+    if decision.status not in ("pending", "draft_ready"):
+        raise DomainError("Ta sprawa nie pozwala na taką zmianę stanu.")
+    if decision.version != version:
+        raise DomainError("Sprawa zmieniła się w innej karcie. Odśwież widok.")
+    if decision.send_attempted_at:
+        raise DomainError("Wysyłka była już rozpoczęta. Sprawdź oryginalny wątek w Gmail.")
+    return update_versioned(session, decision, version, status="dismissed")
+
+
 def edit(session, decision, draft, version):
-    writable(decision, "draft_ready", version)
+    writable(decision, "draft_ready", version, classifications=("needs_reply", "needs_review"))
     return update_versioned(session, decision, version, draft=draft)
 
 
 def send(session, decision, confirmed, version, settings, gmail):
     if confirmed is not True:
         raise DomainError("Wymagane jest osobne potwierdzenie wysyłki.", 422)
-    writable(decision, "draft_ready", version)
+    writable(decision, "draft_ready", version, classifications=("needs_reply", "needs_review"))
     if not decision.draft or not decision.draft.strip():
         raise DomainError("Draft nie może być pusty.")
     if decision.deadline and date.fromisoformat(decision.deadline) < datetime.now(
