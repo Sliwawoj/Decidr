@@ -481,7 +481,7 @@ export default function DecisionPage({
                 <ErrorNotice
                   message={
                     d.send_error ||
-                    "Wysyłka została rozpoczęta. Odśwież widok i sprawdź Gmail. Nie ponawiamy automatycznie."
+                    "Wysyłka mogła dojść. Otwórz Gmail i sprawdź ten wątek — Decidr nie ponawia wysyłki automatycznie."
                   }
                   retry={() => void load()}
                 />

@@ -81,7 +81,7 @@ def test_two_step_llm_gate_and_extract(settings):
 
 
 def test_needs_review_adds_open_draft_llm_call(settings):
-    from app.services.analyzer import DecisionGate, ExtractedDecision, ReviewDraftContext
+    from app.services.analyzer import DECISION_PLACEHOLDER, DecisionGate, ExtractedDecision, ReplyDraft
 
     message, analysis = next(fixtures())
     analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
@@ -100,29 +100,27 @@ def test_needs_review_adds_open_draft_llm_call(settings):
         confidence=analysis.confidence,
         is_binary=False,
     )
+    draft_text = (
+        "Cześć Anno,\n\n"
+        "Dziękuję za przygotowanie materiałów.\n\n"
+        f"Moja decyzja: {DECISION_PLACEHOLDER}\n\n"
+        "Pozdrawiam,"
+    )
     with patch("app.services.analyzer.genai.Client") as sdk:
         client = sdk.return_value
         client.models.generate_content.side_effect = [
             SimpleNamespace(parsed=DecisionGate(needs_decision=True, reason="Wymaga odpowiedzi")),
             SimpleNamespace(parsed=extracted),
-            SimpleNamespace(
-                parsed=ReviewDraftContext(
-                    context_lead="Dziękuję za przygotowanie opcji w tej sprawie.",
-                    decision_sentence_start="Odnośnie naszego planu w tej sprawie, idziemy w stronę",
-                    next_steps_note="Proszę o dalsze działania po potwierdzeniu.",
-                )
-            ),
+            SimpleNamespace(parsed=ReplyDraft(draft=draft_text)),
         ]
         result = analyzer.analyze(message)
         assert result.classification == "needs_review"
-        assert "Dziękuję za przygotowanie opcji w tej sprawie." in result.draft
-        assert "[WPISZ SWOJĄ DECYZJĘ]" in result.draft
-        assert "Pozdrawiam," in result.draft
+        assert result.draft == draft_text
+        assert DECISION_PLACEHOLDER in result.draft
         assert client.models.generate_content.call_count == 3
-        assert (
-            client.models.generate_content.call_args_list[2].kwargs["config"].response_schema.__name__
-            == "ReviewDraftContext"
-        )
+        review_call = client.models.generate_content.call_args_list[2]
+        assert review_call.kwargs["config"].response_schema.__name__ == "ReplyDraft"
+        assert review_call.kwargs["config"].temperature == 0.4
 
 
 def test_gate_skip_skips_second_llm_call(settings):

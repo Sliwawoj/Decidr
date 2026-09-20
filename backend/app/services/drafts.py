@@ -106,7 +106,8 @@ def send(session, decision, confirmed, version, settings, gmail):
         reply_id = gmail.send_reply(client, decision)
     except Exception as exc:
         decision.send_error = (
-            "Nie można potwierdzić wyniku wysyłki. Sprawdź wątek w Gmail; nie ponawiamy automatycznie."
+            "Nie udało się potwierdzić wysyłki. Otwórz Gmail i sprawdź ten wątek — "
+            "Decidr nie ponawia wysyłki automatycznie."
         )
         session.commit()
         raise DomainError(decision.send_error, 502) from exc
