@@ -81,7 +81,7 @@ def test_two_step_llm_gate_and_extract(settings):
 
 
 def test_needs_review_adds_open_draft_llm_call(settings):
-    from app.services.analyzer import DecisionGate, ExtractedDecision, ReplyDraft
+    from app.services.analyzer import DecisionGate, ExtractedDecision, ReviewDraftContext
 
     message, analysis = next(fixtures())
     analyzer = LLMAnalyzer(settings.model_copy(update={"gemini_api_key": "test-key"}))
@@ -105,15 +105,23 @@ def test_needs_review_adds_open_draft_llm_call(settings):
         client.models.generate_content.side_effect = [
             SimpleNamespace(parsed=DecisionGate(needs_decision=True, reason="Wymaga odpowiedzi")),
             SimpleNamespace(parsed=extracted),
-            SimpleNamespace(parsed=ReplyDraft(draft="Dzień dobry,\n\nPropozycja odpowiedzi.\n\nPozdrawiam")),
+            SimpleNamespace(
+                parsed=ReviewDraftContext(
+                    context_lead="Dziękuję za przygotowanie opcji w tej sprawie.",
+                    decision_sentence_start="Odnośnie naszego planu w tej sprawie, idziemy w stronę",
+                    next_steps_note="Proszę o dalsze działania po potwierdzeniu.",
+                )
+            ),
         ]
         result = analyzer.analyze(message)
         assert result.classification == "needs_review"
-        assert "Propozycja odpowiedzi" in result.draft
+        assert "Dziękuję za przygotowanie opcji w tej sprawie." in result.draft
+        assert "[WPISZ SWOJĄ DECYZJĘ]" in result.draft
+        assert "Pozdrawiam," in result.draft
         assert client.models.generate_content.call_count == 3
         assert (
             client.models.generate_content.call_args_list[2].kwargs["config"].response_schema.__name__
-            == "ReplyDraft"
+            == "ReviewDraftContext"
         )
 
 
