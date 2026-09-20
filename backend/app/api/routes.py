@@ -1,4 +1,5 @@
 import hmac
+import logging
 import secrets
 import time
 
@@ -7,11 +8,13 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.core.csrf import public_base_url
 from app.core.errors import DomainError
 from app.db.models import Decision, GmailConnection
 from app.schemas.decision import ChoiceIn, DecisionOut, DismissIn, DraftIn, PushIn, SendIn
 from app.services import drafts
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 
@@ -188,17 +191,31 @@ def disconnect_gmail(request: Request, session=Depends(session_db)):
 @router.post("/oauth/gmail/start", dependencies=[Depends(authorized)])
 def oauth_start(request: Request):
     live_only(request)
-    flow = request.app.state.gmail.flow()
+    settings = request.app.state.settings
+    # Must match an authorized redirect URI in Google Cloud and the URL the user opened.
+    redirect_uri = settings.google_redirect_uri
+    flow = request.app.state.gmail.flow(redirect_uri=redirect_uri)
     url, state = flow.authorization_url(
         access_type="offline", prompt="consent", include_granted_scopes="true"
     )
-    request.session["oauth"] = {"state": state, "verifier": flow.code_verifier, "created": time.time()}
+    request.session["oauth"] = {
+        "state": state,
+        "verifier": flow.code_verifier,
+        "created": time.time(),
+        "redirect_uri": redirect_uri,
+    }
     return {"url": url}
 
 
-@router.get("/oauth/gmail/callback", dependencies=[Depends(authorized)])
+@router.get("/oauth/gmail/callback")
 def oauth_callback(request: Request, session=Depends(session_db)):
-    live_only(request)
+    """Browser return from Google — always redirect to the SPA, never raw JSON."""
+    settings = request.app.state.settings
+    base = public_base_url(request, settings.frontend_url) + "/settings"
+    if settings.app_mode != "live":
+        return RedirectResponse(base + "?oauth=error", status_code=303)
+    if not request.session.get("authenticated"):
+        return RedirectResponse(base + "?oauth=error", status_code=303)
     oauth = request.session.pop("oauth", None)
     supplied_state = request.query_params.get("state", "")
     if (
@@ -206,13 +223,23 @@ def oauth_callback(request: Request, session=Depends(session_db)):
         or time.time() - oauth["created"] > 600
         or not secrets.compare_digest(supplied_state, oauth["state"])
     ):
-        raise DomainError("Sesja OAuth wygasła lub jest nieprawidłowa. Połącz konto ponownie.", 400)
+        return RedirectResponse(base + "?oauth=error", status_code=303)
     code = request.query_params.get("code")
-    url = request.app.state.settings.frontend_url.rstrip("/") + "/settings"
     if not code or request.query_params.get("error"):
-        return RedirectResponse(url + "?oauth=cancelled", status_code=303)
+        return RedirectResponse(base + "?oauth=cancelled", status_code=303)
     try:
-        request.app.state.gmail.complete_oauth(session, code, supplied_state, oauth["verifier"])
+        request.app.state.gmail.complete_oauth(
+            session,
+            code,
+            supplied_state,
+            oauth["verifier"],
+            redirect_uri=oauth.get("redirect_uri") or settings.google_redirect_uri,
+        )
+    except DomainError as exc:
+        logger.warning("Gmail OAuth failed: %s", exc.message)
+        kind = "rate_limited" if exc.status_code == 429 else "error"
+        return RedirectResponse(base + f"?oauth={kind}", status_code=303)
     except Exception:
-        return RedirectResponse(url + "?oauth=error", status_code=303)
-    return RedirectResponse(url + "?oauth=connected", status_code=303)
+        logger.exception("Gmail OAuth token exchange failed")
+        return RedirectResponse(base + "?oauth=error", status_code=303)
+    return RedirectResponse(base + "?oauth=connected", status_code=303)

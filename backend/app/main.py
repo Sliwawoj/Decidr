@@ -7,6 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import router
 from app.core.config import Settings
+from app.core.csrf import origin_allowed
 from app.core.errors import DomainError
 from app.db.session import create_database
 from app.scheduler import start_scheduler
@@ -57,8 +58,7 @@ def create_app(settings: Settings | None = None):
         if request.method in {"POST", "PATCH", "PUT", "DELETE"}:
             if request.headers.get("X-Decidr-Client") != "web":
                 return JSONResponse({"detail": "Brak nagłówka klienta."}, status_code=403)
-            origin = request.headers.get("origin")
-            if origin and origin.rstrip("/") != settings.frontend_url.rstrip("/"):
+            if not origin_allowed(request, settings.frontend_url):
                 return JSONResponse({"detail": "Niedozwolone źródło żądania."}, status_code=403)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"

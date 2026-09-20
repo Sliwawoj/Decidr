@@ -2,6 +2,8 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.core.errors import DomainError
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,6 +15,8 @@ def start_scheduler(settings, ingestion):
     def sync():
         try:
             ingestion.sync()
+        except DomainError as exc:
+            logger.warning("Scheduled sync did not complete: %s", exc.message)
         except Exception as exc:
             logger.warning("Scheduled sync did not complete: %s", type(exc).__name__)
 

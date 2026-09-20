@@ -220,6 +220,25 @@ def test_live_blocks_gmail_oauth_and_unconfigured_push(client):
 def test_csrf_guard(client):
     assert client.post("/api/gmail/sync", headers={"X-Decidr-Client": ""}).status_code == 403
     assert client.post("/api/gmail/sync", headers={"Origin": "https://evil.example"}).status_code == 403
+    # Same Host the request hit is allowed even when FRONTEND_URL differs (ngrok / tunnel).
+    assert (
+        client.post(
+            "/api/gmail/sync",
+            headers={"Origin": "http://testserver", "Host": "testserver"},
+        ).status_code
+        != 403
+    )
+    assert (
+        client.post(
+            "/api/gmail/sync",
+            headers={
+                "Origin": "https://tunnel.example",
+                "Host": "tunnel.example",
+                "X-Forwarded-Proto": "https",
+            },
+        ).status_code
+        != 403
+    )
 
 
 def test_parallel_confirmations_complete_once(client):
@@ -254,7 +273,11 @@ def test_live_session_protects_data(settings):
         assert client.post("/api/session", json={"password": live.app_password}).status_code == 200
         assert client.get("/api/decisions").status_code == 200
         assert client.post("/api/gmail/sync").status_code == 503
-        assert client.get("/api/oauth/gmail/callback?state=forged&code=fake").status_code == 400
+        callback = client.get(
+            "/api/oauth/gmail/callback?state=forged&code=fake", follow_redirects=False
+        )
+        assert callback.status_code == 303
+        assert "oauth=error" in callback.headers["location"]
         assert client.delete("/api/session").status_code == 200
         assert client.get("/api/decisions").status_code == 401
 

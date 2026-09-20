@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import re
 from datetime import datetime, timezone
 from email import policy
@@ -14,6 +15,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_httplib2 import AuthorizedHttp
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from httplib2 import Http
 from sqlalchemy import select
 
@@ -23,6 +25,24 @@ from app.schemas.decision import NormalizedMessage
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]
 MAX_BODY = 24000
+
+
+def map_gmail_http_error(exc: HttpError) -> DomainError:
+    status = getattr(exc.resp, "status", None)
+    detail = (exc.content or b"").decode("utf-8", errors="replace")[:240]
+    if status == 429:
+        return DomainError(
+            "Gmail ograniczył zapytania (limit). Spróbuj ponownie za kilka minut.",
+            429,
+        )
+    if status in {401, 403}:
+        if "accessNotConfigured" in detail or "has not been used" in detail or "disabled" in detail.lower():
+            return DomainError(
+                "Włącz Gmail API w Google Cloud Console dla tego projektu OAuth.",
+                503,
+            )
+        return DomainError("Połączenie z Gmail wygasło lub brak uprawnień. Połącz konto ponownie.", 503)
+    return DomainError("Synchronizacja nie powiodła się. Sprawdź połączenie z Gmail.", 502)
 
 
 def header(value):
@@ -123,25 +143,29 @@ class GmailService:
         self.settings = settings
         self.sessions = sessions
 
-    def flow(self, state=None, code_verifier=None):
+    def flow(self, state=None, code_verifier=None, redirect_uri=None):
         if not self.settings.gmail_configured:
             raise DomainError("Uzupełnij konfigurację OAuth Gmaila.", 503)
-        return Flow.from_client_config(
+        redirect = redirect_uri or self.settings.google_redirect_uri
+        flow = Flow.from_client_config(
             {
                 "web": {
                     "client_id": self.settings.google_client_id,
                     "client_secret": self.settings.google_client_secret,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [self.settings.google_redirect_uri],
+                    "redirect_uris": [redirect],
                 }
             },
             scopes=SCOPES,
             state=state,
-            redirect_uri=self.settings.google_redirect_uri,
+            redirect_uri=redirect,
             code_verifier=code_verifier,
             autogenerate_code_verifier=code_verifier is None,
         )
+        # Library may drop redirect_uri when forwarding kwargs into OAuth2Session.
+        flow.redirect_uri = redirect
+        return flow
 
     def cipher(self):
         return Fernet(self.settings.token_encryption_key.encode())
@@ -187,14 +211,39 @@ class GmailService:
         day = (cutoff.astimezone(timezone.utc) - timedelta(days=1)).strftime("%Y/%m/%d")
         return f"({query}) after:{day}"
 
-    def complete_oauth(self, session, code, state, verifier):
-        flow = self.flow(state, verifier)
+    def complete_oauth(self, session, code, state, verifier, redirect_uri=None):
+        # include_granted_scopes can widen the granted set; oauthlib otherwise aborts.
+        os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+        flow = self.flow(state, verifier, redirect_uri=redirect_uri)
         flow.fetch_token(code=code, timeout=20)
-        client = build(
-            "gmail", "v1", http=AuthorizedHttp(flow.credentials, http=Http(timeout=25)), cache_discovery=False
-        )
-        profile = client.users().getProfile(userId="me").execute(num_retries=0)
-        self.save_credentials(session, flow.credentials, profile["emailAddress"])
+        email = self._email_from_credentials(flow.credentials)
+        self.save_credentials(session, flow.credentials, email)
+
+    def _email_from_credentials(self, credentials) -> str:
+        """Prefer OAuth userinfo (separate quota) over Gmail getProfile — avoids 429 during connect."""
+        http = AuthorizedHttp(credentials, http=Http(timeout=25))
+        try:
+            _, content = http.request(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                method="GET",
+            )
+            info = json.loads(content.decode() if isinstance(content, bytes) else content)
+            email = (info.get("email") or "").strip()
+            if email:
+                return email
+        except Exception:
+            pass
+        try:
+            client = build(
+                "gmail", "v1", http=AuthorizedHttp(credentials, http=Http(timeout=25)), cache_discovery=False
+            )
+            profile = client.users().getProfile(userId="me").execute(num_retries=0)
+            email = (profile.get("emailAddress") or "").strip()
+            if email:
+                return email
+        except Exception as exc:
+            raise DomainError("Nie udało się odczytać adresu Gmail po OAuth.", 502) from exc
+        raise DomainError("Nie udało się odczytać adresu Gmail po OAuth.", 502)
 
     def client(self, session):
         if self.settings.app_mode != "live":
@@ -222,35 +271,38 @@ class GmailService:
         query = self.list_query(cutoff)
         page = None
         # Bounded hackathon sync. Persisted IDs, not UNREAD flags, are our processing checkpoint.
-        for _ in range(10):
-            result = (
-                client.users()
-                .messages()
-                .list(
-                    userId="me",
-                    q=query,
-                    maxResults=50,
-                    pageToken=page,
-                )
-                .execute(num_retries=0)
-            )
-            for item in result.get("messages", []):
-                if session.scalar(select(Decision.id).where(Decision.gmail_message_id == item["id"])):
-                    continue
-                resource = (
+        try:
+            for _ in range(10):
+                result = (
                     client.users()
                     .messages()
-                    .get(userId="me", id=item["id"], format="raw")
+                    .list(
+                        userId="me",
+                        q=query,
+                        maxResults=50,
+                        pageToken=page,
+                    )
                     .execute(num_retries=0)
                 )
-                message = parse_message(resource)
-                # Gmail after: is day-granular; drop anything received before connect time.
-                if cutoff is not None and message.received_at < cutoff:
-                    continue
-                yield message
-            page = result.get("nextPageToken")
-            if not page:
-                break
+                for item in result.get("messages", []):
+                    if session.scalar(select(Decision.id).where(Decision.gmail_message_id == item["id"])):
+                        continue
+                    resource = (
+                        client.users()
+                        .messages()
+                        .get(userId="me", id=item["id"], format="raw")
+                        .execute(num_retries=0)
+                    )
+                    message = parse_message(resource)
+                    # Gmail after: is day-granular; drop anything received before connect time.
+                    if cutoff is not None and message.received_at < cutoff:
+                        continue
+                    yield message
+                page = result.get("nextPageToken")
+                if not page:
+                    break
+        except HttpError as exc:
+            raise map_gmail_http_error(exc) from exc
 
     def send_reply(self, client, decision):
         response = (

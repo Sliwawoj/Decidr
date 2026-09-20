@@ -101,7 +101,8 @@ class IngestionService:
             self.last_sync_error = exc.message
             raise
         except Exception as exc:
-            logger.warning("Sync failed: %s", type(exc).__name__)
+            detail = str(exc)[:240]
+            logger.warning("Sync failed: %s: %s", type(exc).__name__, detail)
             self.last_sync_error = "Synchronizacja nie powiodła się. Sprawdź połączenie z Gmail."
             raise DomainError(self.last_sync_error, 502) from exc
         finally:
