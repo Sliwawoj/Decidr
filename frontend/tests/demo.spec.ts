@@ -91,8 +91,8 @@ test("high-stakes matter stays actionable with warning, reject creates a draft",
   ).toBeVisible();
 });
 
-test("integration status and reset work without secrets", async ({ page }) => {
-  await page.goto("/integrations");
+test("settings status and reset work without secrets", async ({ page }) => {
+  await page.goto("/settings");
   await expect(
     page.getByRole("button", { name: "Połącz konto Gmail" }),
   ).toBeDisabled();

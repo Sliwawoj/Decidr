@@ -68,4 +68,6 @@ export const api = {
   sync: () => request<{ imported: number }>("/gmail/sync", "POST"),
   login: (password: string) => request("/session", "POST", { password }),
   oauth: () => request<{ url: string }>("/oauth/gmail/start", "POST"),
+  disconnectGmail: () =>
+    request<{ connected: boolean }>("/gmail/connection", "DELETE"),
 };

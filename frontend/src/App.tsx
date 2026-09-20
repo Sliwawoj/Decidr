@@ -1,36 +1,36 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import {
-  ArrowUpRight,
-  Bell,
+  Link,
+  NavLink,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
+import {
   Check,
   ChevronRight,
-  CircleHelp,
   History,
   Inbox,
-  Layers3,
   LoaderCircle,
-  LogOut,
-  Menu,
-  Plug2,
+  RefreshCw,
+  Settings,
   ShieldCheck,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ErrorNotice, Loading } from "@/components/common";
-import { api, request } from "@/services/api";
+import { api } from "@/services/api";
 import type { AppStatus, Decision } from "@/types";
 import QueuePage from "@/pages/QueuePage";
 import DecisionPage from "@/pages/DecisionPage";
-import IntegrationsPage from "@/pages/IntegrationsPage";
+import SettingsPage from "@/pages/SettingsPage";
 
 export default function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [menu, setMenu] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
   const location = useLocation();
   const refresh = useCallback(async () => {
     setError("");
@@ -49,7 +49,6 @@ export default function App() {
     void refresh();
   }, [refresh]);
   useEffect(() => {
-    setMenu(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
   useEffect(() => {
@@ -64,140 +63,95 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const pending = decisions.filter((d) =>
-    ["pending", "draft_ready"].includes(d.status),
-  ).length;
-  const nav = [
-    { path: "/", label: "Kolejka decyzji", icon: Inbox, count: pending },
-    { path: "/history", label: "Historia", icon: History, count: 0 },
-    { path: "/integrations", label: "Integracje", icon: Plug2, count: 0 },
-  ];
+  const canSync = Boolean(status?.authenticated);
+  const syncDisabled =
+    syncBusy ||
+    !canSync ||
+    (status?.mode === "live" && !status.gmail.connected);
+
+  async function sync() {
+    if (syncDisabled || !status) return;
+    setSyncBusy(true);
+    setError("");
+    try {
+      if (status.mode === "live") await api.sync();
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSyncBusy(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main">
         Przejdź do treści
       </a>
-      {menu && (
-        <button
-          className="mobile-scrim"
-          aria-label="Zamknij nawigację"
-          onClick={() => setMenu(false)}
-        />
-      )}
-      <aside className={"sidebar" + (menu ? " is-open" : "")}>
-        <Link to="/" className="brand">
-          <span className="brand-symbol">
-            D<span />
-          </span>
-          decidr<span className="brand-period">.</span>
-        </Link>
-        <div className="workspace">
-          <div className="workspace-icon">
-            <Layers3 size={18} />
-          </div>
-          <div>
-            <strong>Moja przestrzeń</strong>
-            <span>Centrum decyzji</span>
-          </div>
-          <ChevronRight size={14} />
-        </div>
-        <div className="nav-label">TWOJA PRACA</div>
-        <nav aria-label="Nawigacja główna">
-          {nav.map(({ path, label, icon: Icon, count }) => (
-            <NavLink
-              key={path}
-              to={path}
-              end
-              className={({ isActive }) =>
-                "nav-item" + (isActive ? " active" : "")
-              }
-            >
-              <Icon size={19} />
-              <span>{label}</span>
-              {count > 0 && <span className="nav-count">{count}</span>}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="safety-note">
-            <ShieldCheck size={22} />
-            <strong>Ostatnie słowo należy do Ciebie.</strong>
-            <p>Każda odpowiedź wymaga Twojego potwierdzenia.</p>
-          </div>
-          <Link className="sidebar-help" to="/integrations">
-            <CircleHelp size={17} />
-            Jak działa Decidr
-            <ArrowUpRight size={15} />
-          </Link>
-          <div className="profile">
-            <div className="avatar avatar-navy">
-              {status?.mode === "live" ? "JA" : "DE"}
-            </div>
-            <div>
-              <strong>
-                {status?.mode === "live"
-                  ? "Twoje konto"
-                  : "Przestrzeń demonstracyjna"}
-              </strong>
-              <span>
-                {status?.mode === "live"
-                  ? "Tryb Gmail"
-                  : "Bez prawdziwej wysyłki"}
+      <div className="main-shell">
+        <header className="topbar">
+          <div className="topbar-leading">
+            <Link to="/" className="brand topbar-brand">
+              <span className="brand-symbol">
+                D<span />
               </span>
-            </div>
-            {status?.mode === "live" && status.authenticated && (
+              decidr<span className="brand-period">.</span>
+            </Link>
+          </div>
+          <div className="topbar-actions">
+            {status?.authenticated && (
+              <>
+                <NavLink
+                  to="/"
+                  end
+                  className={({ isActive }) =>
+                    "topbar-icon-link" + (isActive ? " active" : "")
+                  }
+                  aria-label="Twoje decyzje"
+                  title="Twoje decyzje"
+                >
+                  <Inbox size={19} />
+                </NavLink>
+                <NavLink
+                  to="/history"
+                  className={({ isActive }) =>
+                    "topbar-icon-link" + (isActive ? " active" : "")
+                  }
+                  aria-label="Historia"
+                  title="Historia"
+                >
+                  <History size={19} />
+                </NavLink>
+              </>
+            )}
+            {canSync && (
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Wyloguj"
-                onClick={async () => {
-                  await request("/session", "DELETE");
-                  await refresh();
-                }}
+                className="topbar-icon-btn"
+                aria-label={
+                  status?.mode === "demo"
+                    ? "Odśwież kolejkę"
+                    : "Synchronizuj Gmail"
+                }
+                disabled={syncDisabled}
+                onClick={() => void sync()}
               >
-                <LogOut size={16} />
+                <RefreshCw size={18} className={syncBusy ? "spin" : ""} />
               </Button>
             )}
-          </div>
-        </div>
-      </aside>
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <Button
-              className="mobile-menu"
-              variant="ghost"
-              size="icon"
-              aria-label="Otwórz menu"
-              onClick={() => setMenu(!menu)}
-            >
-              {menu ? <X size={20} /> : <Menu size={20} />}
-            </Button>
-            <span>Moja przestrzeń</span>
-            <ChevronRight size={14} />
-            <strong>
-              {location.pathname.startsWith("/decisions")
-                ? "Karta Decyzji"
-                : nav.find((n) => n.path === location.pathname)?.label ||
-                  "Decidr"}
-            </strong>
-          </div>
-          <div className="topbar-actions">
-            {status?.mode === "demo" ? (
-              <Badge className="badge-demo">
-                <span className="status-dot" />
-                Tryb demo
-              </Badge>
-            ) : (
-              status && <Badge className="badge-success">Tryb Gmail</Badge>
+            {status?.authenticated && (
+              <NavLink
+                to="/settings"
+                className={({ isActive }) =>
+                  "topbar-icon-link" + (isActive ? " active" : "")
+                }
+                aria-label="Ustawienia"
+                title="Ustawienia"
+              >
+                <Settings size={19} />
+              </NavLink>
             )}
-            <Link
-              className="notification-link"
-              to="/integrations"
-              aria-label="Ustawienia powiadomień"
-            >
-              <Bell size={19} />
-            </Link>
           </div>
         </header>
         <main id="main" className="main-content">
@@ -211,9 +165,9 @@ export default function App() {
                   Dane są przykładowe. Żaden e-mail nie zostanie wysłany.
                 </span>
               </div>
-              <Link to="/integrations">
+              <Link to="/settings">
                 O trybie demo
-                <ArrowRightSmall />
+                <ChevronRight size={15} />
               </Link>
             </div>
           )}
@@ -232,7 +186,6 @@ export default function App() {
                   element={
                     <QueuePage
                       decisions={decisions}
-                      status={status}
                       refresh={refresh}
                       view="queue"
                     />
@@ -243,7 +196,6 @@ export default function App() {
                   element={
                     <QueuePage
                       decisions={decisions}
-                      status={status}
                       refresh={refresh}
                       view="history"
                     />
@@ -254,10 +206,14 @@ export default function App() {
                   element={<DecisionPage refresh={refresh} />}
                 />
                 <Route
-                  path="/integrations"
+                  path="/settings"
                   element={
-                    <IntegrationsPage status={status} refresh={refresh} />
+                    <SettingsPage status={status} refresh={refresh} />
                   }
+                />
+                <Route
+                  path="/integrations"
+                  element={<Navigate to="/settings" replace />}
                 />
                 <Route
                   path="*"
@@ -284,9 +240,6 @@ export default function App() {
       </div>
     </div>
   );
-}
-function ArrowRightSmall() {
-  return <ChevronRight size={15} />;
 }
 function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   const [password, setPassword] = useState("");

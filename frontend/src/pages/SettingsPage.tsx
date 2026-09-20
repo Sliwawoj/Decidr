@@ -1,15 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Bell,
-  BrainCircuit,
+  BellOff,
   Check,
   ExternalLink,
   FlaskConical,
   LoaderCircle,
+  LogOut,
   Mail,
   RotateCcw,
-  ShieldCheck,
+  Unplug,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorNotice } from "@/components/common";
-import { api } from "@/services/api";
-import { subscribeToPush } from "@/services/push";
+import { api, request } from "@/services/api";
+import {
+  isPushSubscribed,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from "@/services/push";
 import type { AppStatus } from "@/types";
 
-export default function IntegrationsPage({
+export default function SettingsPage({
   status: s,
   refresh,
 }: {
@@ -36,7 +41,13 @@ export default function IntegrationsPage({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [reset, setReset] = useState(false);
+  const [pushOn, setPushOn] = useState(false);
   const [params] = useSearchParams();
+
+  useEffect(() => {
+    void isPushSubscribed().then(setPushOn);
+  }, []);
+
   async function run(name: string, fn: () => Promise<void>) {
     setBusy(name);
     setError("");
@@ -50,16 +61,17 @@ export default function IntegrationsPage({
       setBusy("");
     }
   }
+
   const oauth = params.get("oauth");
+
   return (
     <div className="page-enter integrations-page">
       <div className="page-heading">
         <div>
-          <div className="section-eyebrow">WSZYSTKO POD KONTROLĄ</div>
-          <h1>Integracje i zasady</h1>
-          <p>Jasny status połączeń. Bez niespodzianek.</p>
+          <div className="section-eyebrow">KONTO I POŁĄCZENIA</div>
+          <h1>Ustawienia</h1>
+          <p>Powiadomienia i połączenie z Gmailem.</p>
         </div>
-        <ShieldCheck size={30} className="muted-icon" />
       </div>
       {error && <ErrorNotice message={error} />}
       {notice && (
@@ -110,23 +122,43 @@ export default function IntegrationsPage({
             oryginalnego wątku.
           </p>
           {s.gmail.email && <p className="connected-email">{s.gmail.email}</p>}
-          <Button
-            variant="outline"
-            disabled={!!busy || s.mode === "demo" || !s.gmail.configured}
-            onClick={() =>
-              void run("gmail", async () => {
-                const { url } = await api.oauth();
-                window.location.assign(url);
-              })
-            }
-          >
-            {busy === "gmail" ? (
-              <LoaderCircle size={16} className="spin" />
-            ) : (
-              <ExternalLink size={16} />
-            )}
-            {s.gmail.connected ? "Połącz ponownie" : "Połącz konto Gmail"}
-          </Button>
+          {s.gmail.connected && s.mode === "live" ? (
+            <Button
+              variant="outline"
+              disabled={!!busy}
+              onClick={() =>
+                void run("gmail-disconnect", async () => {
+                  await api.disconnectGmail();
+                  setNotice("Konto Gmail zostało rozłączone.");
+                })
+              }
+            >
+              {busy === "gmail-disconnect" ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <Unplug size={16} />
+              )}
+              Rozłącz Gmail
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              disabled={!!busy || s.mode === "demo" || !s.gmail.configured}
+              onClick={() =>
+                void run("gmail", async () => {
+                  const { url } = await api.oauth();
+                  window.location.assign(url);
+                })
+              }
+            >
+              {busy === "gmail" ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <ExternalLink size={16} />
+              )}
+              Połącz konto Gmail
+            </Button>
+          )}
           <p className="integration-footnote">
             {s.mode === "demo"
               ? "Przełącz APP_MODE na live w konfiguracji, aby używać własnej skrzynki."
@@ -137,51 +169,23 @@ export default function IntegrationsPage({
         </Card>
         <Card className="integration-card">
           <div className="integration-top">
-            <div className="integration-icon icon-purple">
-              <BrainCircuit size={24} />
-            </div>
-            <Badge
-              className={
-                s.mode === "demo"
-                  ? "badge-neutral"
-                  : s.llm.configured
-                    ? "badge-success"
-                    : "badge-warning"
-              }
-            >
-              {s.mode === "demo"
-                ? "Analizy przykładowe"
-                : s.llm.configured
-                  ? "Skonfigurowano"
-                  : "Brak klucza"}
-            </Badge>
-          </div>
-          <h2>Analiza AI</h2>
-          <p>
-            Wydobywa treść prośby, kwotę i warunki. Każda analiza przechodzi
-            dodatkowo przez reguły bezpieczeństwa.
-          </p>
-          <div className="integration-detail">
-            <span>{s.mode === "demo" ? "Tryb analizy" : "Model"}</span>
-            <strong>
-              {s.mode === "demo" ? "Stałe dane demonstracyjne" : s.llm.model}
-            </strong>
-          </div>
-          <p className="integration-footnote">
-            {s.mode === "demo"
-              ? "Demo nie wykonuje połączeń z API modelu."
-              : "Brak klucza lub błąd AI kieruje sprawę do pełnego kontekstu."}
-          </p>
-        </Card>
-        <Card className="integration-card">
-          <div className="integration-top">
             <div className="integration-icon icon-amber">
               <Bell size={24} />
             </div>
             <Badge
-              className={s.push.configured ? "badge-success" : "badge-neutral"}
+              className={
+                !s.push.configured
+                  ? "badge-neutral"
+                  : pushOn
+                    ? "badge-success"
+                    : "badge-neutral"
+              }
             >
-              {s.push.configured ? "Skonfigurowano" : "Opcjonalne"}
+              {!s.push.configured
+                ? "Opcjonalne"
+                : pushOn
+                  ? "Włączone"
+                  : "Wyłączone"}
             </Badge>
           </div>
           <h2>Powiadomienia Web Push</h2>
@@ -189,23 +193,45 @@ export default function IntegrationsPage({
             Krótki sygnał, gdy pojawi się nowa mikrodecyzja. Bez treści maila na
             ekranie blokady.
           </p>
-          <Button
-            variant="outline"
-            disabled={!!busy || !s.push.configured}
-            onClick={() =>
-              void run("push", async () => {
-                await subscribeToPush(s.push.public_key!);
-                setNotice("Powiadomienia są włączone na tym urządzeniu.");
-              })
-            }
-          >
-            {busy === "push" ? (
-              <LoaderCircle size={16} className="spin" />
-            ) : (
-              <Bell size={16} />
-            )}
-            Włącz na tym urządzeniu
-          </Button>
+          {pushOn ? (
+            <Button
+              variant="outline"
+              disabled={!!busy || !s.push.configured}
+              onClick={() =>
+                void run("push-off", async () => {
+                  await unsubscribeFromPush();
+                  setPushOn(false);
+                  setNotice("Powiadomienia są wyłączone na tym urządzeniu.");
+                })
+              }
+            >
+              {busy === "push-off" ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <BellOff size={16} />
+              )}
+              Wyłącz na tym urządzeniu
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              disabled={!!busy || !s.push.configured}
+              onClick={() =>
+                void run("push", async () => {
+                  await subscribeToPush(s.push.public_key!);
+                  setPushOn(true);
+                  setNotice("Powiadomienia są włączone na tym urządzeniu.");
+                })
+              }
+            >
+              {busy === "push" ? (
+                <LoaderCircle size={16} className="spin" />
+              ) : (
+                <Bell size={16} />
+              )}
+              Włącz na tym urządzeniu
+            </Button>
+          )}
           <p className="integration-footnote">
             {s.push.configured
               ? "Przeglądarka poprosi o zgodę. Możesz odmówić i nadal używać kolejki."
@@ -213,35 +239,33 @@ export default function IntegrationsPage({
           </p>
         </Card>
       </div>
-      <Card className="rules-panel">
-        <div>
-          <div className="rail-icon">
-            <ShieldCheck size={24} />
-          </div>
-          <h2>
-            Proste decyzje.
-            <br />
-            Konkretne granice.
-          </h2>
-          <p>
-            Gemini ocenia mail w dwóch krokach. Ty zatwierdzasz odpowiedź.
-          </p>
-        </div>
-        <div className="rules-list">
-          <div>
-            <Check size={18} />
-            <span>1. Czy potrzebna decyzja? Jeśli nie — pomijamy</span>
+      {s.mode === "live" && s.authenticated && (
+        <Card className="demo-settings">
+          <div className="integration-icon icon-blue">
+            <LogOut size={24} />
           </div>
           <div>
-            <Check size={18} />
-            <span>2. Krótki opis decyzji → powiadomienie + kolejka</span>
+            <h2>Twoje konto</h2>
+            <p>Wyloguj się z tej przeglądarki. Kolejka przestanie być widoczna.</p>
           </div>
-          <div>
-            <Check size={18} />
-            <span>Wybór → draft → osobne potwierdzenie wysyłki</span>
-          </div>
-        </div>
-      </Card>
+          <Button
+            variant="outline"
+            disabled={!!busy}
+            onClick={() =>
+              void run("logout", async () => {
+                await request("/session", "DELETE");
+              })
+            }
+          >
+            {busy === "logout" ? (
+              <LoaderCircle size={16} className="spin" />
+            ) : (
+              <LogOut size={16} />
+            )}
+            Wyloguj
+          </Button>
+        </Card>
+      )}
       {s.last_sync_error && <ErrorNotice message={s.last_sync_error} />}
       {s.mode === "demo" && (
         <Card className="demo-settings">

@@ -173,6 +173,24 @@ def subscribe(data: PushIn, request: Request, session=Depends(session_db)):
     return {"subscribed": True}
 
 
+@router.delete("/push/subscriptions", dependencies=[Depends(authorized)])
+def unsubscribe(endpoint: str, request: Request, session=Depends(session_db)):
+    if not endpoint or len(endpoint) > 2048:
+        raise DomainError("Nieprawidłowy endpoint powiadomień.", 400)
+    request.app.state.push.unsubscribe(session, endpoint)
+    return {"subscribed": False}
+
+
+@router.delete("/gmail/connection", dependencies=[Depends(authorized)])
+def disconnect_gmail(request: Request, session=Depends(session_db)):
+    live_only(request)
+    connection = session.get(GmailConnection, 1)
+    if connection:
+        session.delete(connection)
+        session.commit()
+    return {"connected": False}
+
+
 @router.post("/oauth/gmail/start", dependencies=[Depends(authorized)])
 def oauth_start(request: Request):
     live_only(request)
@@ -196,7 +214,7 @@ def oauth_callback(request: Request, session=Depends(session_db)):
     ):
         raise DomainError("Sesja OAuth wygasła lub jest nieprawidłowa. Połącz konto ponownie.", 400)
     code = request.query_params.get("code")
-    url = request.app.state.settings.frontend_url.rstrip("/") + "/integrations"
+    url = request.app.state.settings.frontend_url.rstrip("/") + "/settings"
     if not code or request.query_params.get("error"):
         return RedirectResponse(url + "?oauth=cancelled", status_code=303)
     try:
