@@ -13,8 +13,20 @@ def start_scheduler(settings, ingestion):
 
     def sync():
         try:
+            until = getattr(ingestion, "rate_limited_until", None)
+            if until is not None and datetime.now(timezone.utc) < until:
+                return
+            with ingestion.sessions() as session:
+                from app.db.models import GmailConnection
+
+                if session.get(GmailConnection, 1) is None:
+                    return
             ingestion.sync()
         except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            if status == 429:
+                logger.info("Scheduled sync waiting out Gmail rate limit")
+                return
             logger.warning("Scheduled sync did not complete: %s", type(exc).__name__)
 
     # First run immediately so a reconnect does not wait a full interval.

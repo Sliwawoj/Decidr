@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import DomainError
 from app.db.models import Decision, utcnow
+from app.services.gmail import RATE_LIMIT_FALLBACK
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class IngestionService:
         self.sync_lock = Lock()
         self.last_sync_at = None
         self.last_sync_error = None
+        self.rate_limited_until = None
 
     def ingest(self, session, message, is_demo=False, fixture_analysis=None):
         existing = session.scalar(
@@ -83,9 +85,21 @@ class IngestionService:
                 logger.warning("Push failed without affecting ingestion: %s", type(exc).__name__)
         return decision, queued
 
+    def _still_rate_limited(self):
+        if self.rate_limited_until is None:
+            return False
+        return utcnow() < self.rate_limited_until
+
     def sync(self):
         if self.settings.app_mode != "live":
             raise DomainError("Synchronizacja Gmaila jest wyłączona w demo.", 400)
+        if self._still_rate_limited():
+            raise DomainError(
+                self.last_sync_error
+                or "Gmail ograniczył zapytania (limit). Synchronizacja wznowi się automatycznie za kilka minut.",
+                429,
+                retry_after=self.rate_limited_until,
+            )
         if not self.sync_lock.acquire(blocking=False):
             raise DomainError("Synchronizacja już trwa.")
         try:
@@ -96,12 +110,15 @@ class IngestionService:
                     imported += int(queued)
             self.last_sync_at = utcnow().isoformat()
             self.last_sync_error = None
+            self.rate_limited_until = None
             return {"imported": imported, "synced_at": self.last_sync_at}
         except DomainError as exc:
             self.last_sync_error = exc.message
+            if exc.status_code == 429:
+                self.rate_limited_until = exc.retry_after or (utcnow() + RATE_LIMIT_FALLBACK)
             raise
         except Exception as exc:
-            logger.warning("Sync failed: %s", type(exc).__name__)
+            logger.warning("Sync failed: %s: %s", type(exc).__name__, str(exc)[:300])
             self.last_sync_error = "Synchronizacja nie powiodła się. Sprawdź połączenie z Gmail."
             raise DomainError(self.last_sync_error, 502) from exc
         finally:

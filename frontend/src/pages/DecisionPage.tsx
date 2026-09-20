@@ -357,7 +357,7 @@ export default function DecisionPage({
                   onClick={() => void dismiss()}
                 >
                   <Trash2 size={14} />
-                  Nie odpowiadaj — usuń z kolejki
+                  Nie odpowiadaj — zostaw w mailu
                 </button>
               )}
               <div className="choice-note">
@@ -467,7 +467,7 @@ export default function DecisionPage({
                       onClick={() => void dismiss()}
                     >
                       <Trash2 size={14} />
-                      Nie odpowiadaj — usuń z kolejki
+                      Nie odpowiadaj — zostaw w mailu
                     </button>
                   )}
                   <div className="choice-note">

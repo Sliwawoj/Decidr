@@ -10,10 +10,7 @@ import {
 import {
   Check,
   ChevronRight,
-  History,
-  Inbox,
   LoaderCircle,
-  RefreshCw,
   Settings,
   ShieldCheck,
 } from "lucide-react";
@@ -30,7 +27,6 @@ export default function App() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [syncBusy, setSyncBusy] = useState(false);
   const location = useLocation();
   const refresh = useCallback(async () => {
     setError("");
@@ -63,26 +59,6 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const canSync = Boolean(status?.authenticated);
-  const syncDisabled =
-    syncBusy ||
-    !canSync ||
-    (status?.mode === "live" && !status.gmail.connected);
-
-  async function sync() {
-    if (syncDisabled || !status) return;
-    setSyncBusy(true);
-    setError("");
-    try {
-      if (status.mode === "live") await api.sync();
-      await refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSyncBusy(false);
-    }
-  }
-
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main">
@@ -91,7 +67,11 @@ export default function App() {
       <div className="main-shell">
         <header className="topbar">
           <div className="topbar-leading">
-            <Link to="/" className="brand topbar-brand">
+            <Link
+              to="/"
+              className="brand topbar-brand"
+              aria-label="decidr. — strona główna"
+            >
               <span className="brand-symbol">
                 D<span />
               </span>
@@ -99,47 +79,6 @@ export default function App() {
             </Link>
           </div>
           <div className="topbar-actions">
-            {status?.authenticated && (
-              <>
-                <NavLink
-                  to="/"
-                  end
-                  className={({ isActive }) =>
-                    "topbar-icon-link" + (isActive ? " active" : "")
-                  }
-                  aria-label="Twoje decyzje"
-                  title="Twoje decyzje"
-                >
-                  <Inbox size={19} />
-                </NavLink>
-                <NavLink
-                  to="/history"
-                  className={({ isActive }) =>
-                    "topbar-icon-link" + (isActive ? " active" : "")
-                  }
-                  aria-label="Historia"
-                  title="Historia"
-                >
-                  <History size={19} />
-                </NavLink>
-              </>
-            )}
-            {canSync && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="topbar-icon-btn"
-                aria-label={
-                  status?.mode === "demo"
-                    ? "Odśwież kolejkę"
-                    : "Synchronizuj Gmail"
-                }
-                disabled={syncDisabled}
-                onClick={() => void sync()}
-              >
-                <RefreshCw size={18} className={syncBusy ? "spin" : ""} />
-              </Button>
-            )}
             {status?.authenticated && (
               <NavLink
                 to="/settings"
@@ -159,14 +98,14 @@ export default function App() {
             <div className="demo-banner">
               <div>
                 <span className="demo-dot" />
-                <strong>Bezpieczna przestrzeń do testów.</strong>
+                <strong>Tryb demo</strong>
                 <span>
                   {" "}
-                  Dane są przykładowe. Żaden e-mail nie zostanie wysłany.
+                  Dane przykładowe — nic nie wychodzi ze skrzynki.
                 </span>
               </div>
               <Link to="/settings">
-                O trybie demo
+                Info
                 <ChevronRight size={15} />
               </Link>
             </div>
@@ -229,13 +168,15 @@ export default function App() {
               </Routes>
             )
           )}
-          <footer className="app-footer">
-            <span>
-              decidr<span className="brand-period">.</span>
-            </span>
-            <span>Mniej otwartych wątków. Więcej spokoju.</span>
-            <ShieldCheck size={15} />
-          </footer>
+          {location.pathname !== "/" && (
+            <footer className="app-footer">
+              <span>
+                decidr<span className="brand-period">.</span>
+              </span>
+              <span>Mniej otwartych wątków. Więcej spokoju.</span>
+              <ShieldCheck size={15} />
+            </footer>
+          )}
         </main>
       </div>
     </div>

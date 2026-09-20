@@ -13,10 +13,10 @@ test("approve, edit, preview, cancel, confirm and persist demo", async ({
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Twoje decyzje", exact: true }),
-  ).toBeVisible();
   await expect(page.getByText("Tryb demo", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Szybkie/ }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Pełny kontekst" })).toHaveCount(
     0,
   );
@@ -63,13 +63,18 @@ test("approve, edit, preview, cancel, confirm and persist demo", async ({
 
 test("high-stakes matter stays actionable with warning, reject creates a draft", async ({
   page,
+  request,
 }) => {
   await page.goto("/history");
   await expect(page.getByText("Historia dopiero się zaczyna")).toBeVisible();
-  await page.goto("/");
-  await page
-    .getByRole("link", { name: /Pilne: akceptacja umowy partnerskiej/ })
-    .click();
+  const list = await request.get("/api/decisions");
+  const decisions = (await list.json()) as { id: string; subject: string }[];
+  const highStakes = decisions.find((d) =>
+    d.subject.includes("akceptacja umowy"),
+  );
+  const courier = decisions.find((d) => d.subject.includes("Odbiór przesyłki"));
+  expect(highStakes && courier).toBeTruthy();
+  await page.goto("/decisions/" + highStakes!.id);
   await expect(page.getByText("Warto spojrzeć uważniej")).toBeVisible();
   await expect(page.getByRole("button", { name: "Zezwól", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Odrzuć", exact: true })).toBeVisible();
@@ -77,10 +82,7 @@ test("high-stakes matter stays actionable with warning, reject creates a draft",
   await expect(
     page.getByText(/Proszę dziś zaakceptować umowę inwestycyjną/),
   ).toBeVisible();
-  await page.goto("/");
-  await page
-    .getByRole("link", { name: "Otwórz: Odbiór przesyłki przez kuriera" })
-    .click();
+  await page.goto("/decisions/" + courier!.id);
   await page.getByRole("button", { name: "Odrzuć", exact: true }).click();
   await expect(page.getByLabel("Treść odpowiedzi")).toContainText(
     "Nie wyrażam zgody",
@@ -138,5 +140,26 @@ test("API failure has a recoverable error state", async ({ page }) => {
     page.getByRole("link", {
       name: "Otwórz: Materiały do warsztatu z klientem",
     }),
+  ).toBeVisible();
+});
+
+test("queue shows one ticket and stream toggle", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: /Szybkie/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(
+    page.getByRole("link", {
+      name: "Otwórz: Materiały do warsztatu z klientem",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Zezwól", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Odrzuć", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: /Wybór/ }).click();
+  await expect(
+    page.getByText(/Brak szkiców|Szkic|Zatwierdź/i).first(),
   ).toBeVisible();
 });

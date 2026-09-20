@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Bell,
   BellOff,
   Check,
+  ChevronRight,
   ExternalLink,
   FlaskConical,
+  History,
   LoaderCircle,
   LogOut,
   Mail,
@@ -91,10 +93,27 @@ export default function SettingsPage({
             ? "Konto Gmail zostało połączone."
             : oauth === "cancelled"
               ? "Łączenie konta zostało anulowane."
-              : "Nie udało się połączyć konta. Sprawdź konfigurację OAuth i spróbuj ponownie."}
+              : oauth === "rate_limited"
+                ? "Google chwilowo ograniczył zapytania. Poczekaj ok. 15 minut i spróbuj ponownie."
+                : "Nie udało się połączyć konta. Sprawdź konfigurację OAuth i spróbuj ponownie."}
         </div>
       )}
       <div className="integrations-grid">
+        <Card className="integration-card">
+          <div className="integration-top">
+            <div className="integration-icon icon-amber">
+              <History size={24} />
+            </div>
+          </div>
+          <h2>Historia</h2>
+          <p>Zatwierdzone odpowiedzi i zakończone sprawy.</p>
+          <Button asChild variant="outline">
+            <Link to="/history">
+              Otwórz historię
+              <ChevronRight size={16} />
+            </Link>
+          </Button>
+        </Card>
         <Card className="integration-card">
           <div className="integration-top">
             <div className="integration-icon icon-blue">

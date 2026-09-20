@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,52 @@ from app.services.demo import load_demo
 from app.services.gmail import GmailService
 from app.services.ingestion import IngestionService
 from app.services.push import PushService
+
+
+def _normalize_origin(origin: str) -> str:
+    return origin.strip().rstrip("/")
+
+
+def _loopback_twin(origin: str) -> str | None:
+    parts = urlsplit(origin)
+    host = (parts.hostname or "").lower()
+    if host not in {"localhost", "127.0.0.1"}:
+        return None
+    alt = "127.0.0.1" if host == "localhost" else "localhost"
+    netloc = f"{alt}:{parts.port}" if parts.port else alt
+    return _normalize_origin(f"{parts.scheme}://{netloc}")
+
+
+def _allowed_origins(request: Request, frontend_url: str) -> set[str]:
+    """FRONTEND_URL plus the Host this request actually hit (nginx / ngrok)."""
+    allowed = {_normalize_origin(frontend_url)}
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[
+        0
+    ].strip()
+    if host:
+        proto = (
+            request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+        ).split(",")[0].strip()
+        if proto not in {"http", "https"}:
+            proto = "http"
+        allowed.add(_normalize_origin(f"{proto}://{host}"))
+        # TLS often terminates at the tunnel while nginx sees http.
+        other = "https" if proto == "http" else "http"
+        allowed.add(_normalize_origin(f"{other}://{host}"))
+    expanded: set[str] = set()
+    for item in allowed:
+        expanded.add(item)
+        twin = _loopback_twin(item)
+        if twin:
+            expanded.add(twin)
+    return expanded
+
+
+def origin_allowed(request: Request, frontend_url: str) -> bool:
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    return _normalize_origin(origin) in _allowed_origins(request, frontend_url)
 
 
 def create_app(settings: Settings | None = None):
@@ -61,8 +108,7 @@ def create_app(settings: Settings | None = None):
         if request.method in {"POST", "PATCH", "PUT", "DELETE"}:
             if request.headers.get("X-Decidr-Client") != "web":
                 return JSONResponse({"detail": "Brak nagłówka klienta."}, status_code=403)
-            origin = request.headers.get("origin")
-            if origin and origin.rstrip("/") != settings.frontend_url.rstrip("/"):
+            if not origin_allowed(request, settings.frontend_url):
                 return JSONResponse({"detail": "Niedozwolone źródło żądania."}, status_code=403)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"

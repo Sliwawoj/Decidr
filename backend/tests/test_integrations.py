@@ -302,3 +302,42 @@ def test_gmail_fetch_skips_mail_before_connect(client, settings):
         rows = list(gmail.fetch_messages(session))
     assert [row.gmail_message_id for row in rows] == ["new-1"]
     assert "after:2026/01/09" in messages.list.call_args.kwargs["q"]
+
+
+def test_gmail_rate_limit_maps_to_domain_error_with_backoff(client, settings):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from app.core.errors import DomainError
+    from app.services.gmail import map_gmail_http_error
+    from googleapiclient.errors import HttpError
+
+    content = (
+        b'{"error":{"code":429,"message":'
+        b'"User-rate limit exceeded.  Retry after 2026-09-20T10:14:54.735Z"}}'
+    )
+    exc = HttpError(SimpleNamespace(status=429, reason="Too Many Requests"), content)
+    mapped = map_gmail_http_error(exc)
+    assert isinstance(mapped, DomainError)
+    assert mapped.status_code == 429
+    assert mapped.retry_after == datetime(2026, 9, 20, 10, 14, 54, 735000, tzinfo=timezone.utc)
+    assert "ograniczył zapytania" in mapped.message
+
+    live = settings.model_copy(update={"app_mode": "live", "scheduler_enabled": False})
+    state = client.app.state
+    state.settings = live
+    state.ingestion.settings = live
+    state.ingestion.gmail.fetch_messages = Mock(side_effect=mapped)
+    with pytest.raises(DomainError) as raised:
+        state.ingestion.sync()
+    assert raised.value.status_code == 429
+    assert state.ingestion.rate_limited_until == mapped.retry_after
+    assert "ograniczył zapytania" in state.ingestion.last_sync_error
+
+    # While backing off, sync must not hit Gmail again.
+    state.ingestion.gmail.fetch_messages.reset_mock()
+    with pytest.raises(DomainError) as waiting:
+        state.ingestion.sync()
+    assert waiting.value.status_code == 429
+    state.ingestion.gmail.fetch_messages.assert_not_called()

@@ -56,7 +56,7 @@ function Set-EnvLine([string]$text, [string]$key, [string]$value) {
 
 $content = Set-EnvLine $content "FRONTEND_URL" $existing
 $content = Set-EnvLine $content "GOOGLE_REDIRECT_URI" "$existing/api/oauth/gmail/callback"
-$content = Set-EnvLine $content "COOKIE_SECURE" "true"
+# Leave COOKIE_SECURE alone — true breaks session cookies on http://localhost.
 Set-Content -Path $envPath -Value $content -NoNewline
 
 Write-Host "FRONTEND_URL=$existing"

@@ -86,7 +86,7 @@ def test_needs_review_skips_choice_and_opens_editable_draft(client):
         update={
             "classification": "needs_review",
             "is_binary": False,
-            "draft": "Dzień dobry,\n\nPropozycja LLM.\n\nPozdrawiam",
+            "draft": "DzieÅ„ dobry,\n\nPropozycja LLM.\n\nPozdrawiam",
         }
     )
     with state.sessions() as session:
@@ -105,11 +105,11 @@ def test_needs_review_skips_choice_and_opens_editable_draft(client):
     )
     edited = client.patch(
         f"/api/decisions/{decision_id}/draft",
-        json={"draft": "Dzień dobry,\n\nPoprawiona odpowiedź.\n\nPozdrawiam", "version": version},
+        json={"draft": "DzieÅ„ dobry,\n\nPoprawiona odpowiedÅº.\n\nPozdrawiam", "version": version},
     )
     assert edited.status_code == 200
     body = edited.json()
-    assert body["draft"].startswith("Dzień dobry")
+    assert body["draft"].startswith("DzieÅ„ dobry")
     assert "Poprawiona" in body["draft"]
     sent = client.post(
         f"/api/decisions/{decision_id}/send",
@@ -131,7 +131,7 @@ def test_push_uses_short_decision_blurb(client, settings):
     assert "249" in state.push.notify.call_args.args[1]
 
 
-@pytest.mark.parametrize("choice,word", [("approve", "Wyrażam zgodę"), ("reject", "Nie wyrażam zgody")])
+@pytest.mark.parametrize("choice,word", [("approve", "WyraÅ¼am zgodÄ™"), ("reject", "Nie wyraÅ¼am zgody")])
 def test_choice_only_creates_draft(client, choice, word):
     client.app.state.gmail.send_reply = Mock(side_effect=AssertionError("Must never send"))
     row = draft(client, choice)
@@ -201,11 +201,11 @@ def test_full_demo_flow_and_repeat_send(client):
     row = draft(client)
     url = f"/api/decisions/{row['id']}"
     response = client.patch(
-        url + "/draft", json={"draft": "Dziękuję, potwierdzam warunki.", "version": row["version"]}
+        url + "/draft", json={"draft": "DziÄ™kujÄ™, potwierdzam warunki.", "version": row["version"]}
     )
     assert response.status_code == 200
     edited = response.json()
-    assert edited["draft"] == "Dziękuję, potwierdzam warunki."
+    assert edited["draft"] == "DziÄ™kujÄ™, potwierdzam warunki."
     # A confirmation from before the edit cannot send newer, unseen text.
     assert client.post(url + "/send", json={"confirmed": True, "version": row["version"]}).status_code == 409
     response = client.post(url + "/send", json={"confirmed": True, "version": edited["version"]})
@@ -264,6 +264,25 @@ def test_demo_blocks_gmail_oauth_and_unconfigured_push(client):
 def test_csrf_guard(client):
     assert client.post("/api/demo/reset", headers={"X-Decidr-Client": ""}).status_code == 403
     assert client.post("/api/demo/reset", headers={"Origin": "https://evil.example"}).status_code == 403
+    # Same Host the request hit is allowed even when FRONTEND_URL differs (ngrok / tunnel).
+    assert (
+        client.post(
+            "/api/demo/reset",
+            headers={"Origin": "http://testserver", "Host": "testserver"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/demo/reset",
+            headers={
+                "Origin": "https://tunnel.example",
+                "Host": "tunnel.example",
+                "X-Forwarded-Proto": "https",
+            },
+        ).status_code
+        == 200
+    )
 
 
 def test_parallel_confirmations_complete_once(client):
